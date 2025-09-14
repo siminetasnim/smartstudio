@@ -10,22 +10,9 @@ if 'clear_all' not in st.session_state:
 
 # Function to clear all inputs
 def clear_all_inputs():
-    # Create a list of all input keys
-    input_keys = [
-        'gamma2', 'D', 'c2', 'phi2', 'alpha', 'phi',
-        'sv', 'k1', 'phi2_slide', 'B_slide', 'k2', 'c2_slide', 'Pp_slide', 'Pa_slide', 'alpha_slide',
-        'sv_bp', 'B_bp', 'e_bp',
-        'c2_bc', 'phi2_bc', 'gamma2_bc', 'B_prime_bc', 'q_bc', 'D_bc', 'psi_bc',
-        'Pa_psi', 'alpha_psi', 'sv_psi',
-        'Cc', 'Hc', 'e0', 'sigma0', 'dsigma_p', 'dsigma_f',
-        'Tv', 'H_tv', 'Cv'
-    ]
-    
-    # Clear each input by setting to None only if the key exists
-    for key in input_keys:
-        if key in st.session_state:
-            st.session_state[key] = None
-    
+    for key in st.session_state.keys():
+        if key not in ['clear_all']:
+            del st.session_state[key]
     st.session_state.clear_all = True
 
 # Create tabs
@@ -289,5 +276,5 @@ if st.sidebar.button("Clear All Data"):
 st.sidebar.info("""
 **Geotech Calculator**  
 Created for RMIT Geotechnical Engineering 3  
-All calculations are based on standard geotechnical formulas
+All calculations based on standard geotechnical formulas
 """)
