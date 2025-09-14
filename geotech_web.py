@@ -4,12 +4,15 @@ import math
 st.set_page_config(page_title="Geotech Calculator", layout="wide")
 st.title("RMIT Geotechnical Engineering Calculator")
 
-# Initialize session state for clearing inputs
+# Initialize session state for input fields
 if 'clear_all' not in st.session_state:
     st.session_state.clear_all = False
 
 # Function to clear all inputs
 def clear_all_inputs():
+    for key in st.session_state.keys():
+        if key not in ['clear_all']:
+            del st.session_state[key]
     st.session_state.clear_all = True
 
 # Create tabs
@@ -22,30 +25,35 @@ with tab1:
     
     with col1:
         st.subheader("Rankine's Passive Earth Pressure")
-        gamma2 = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2")
-        D = st.number_input("D (m)", value=None, placeholder="Enter value", key="D")
-        c2_prime = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2")
-        phi2_prime = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2")
+        gamma2 = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2", format="%.4f")
+        D = st.number_input("D (m)", value=None, placeholder="Enter value", key="D", format="%.4f")
+        c2_prime = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2", format="%.4f")
+        phi2_prime = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2", format="%.4f")
         
         if st.button("Calculate Kp and Pp", key="calc_kp_pp"):
-            missing_fields = []
-            if gamma2 is None: missing_fields.append("γ₂")
-            if D is None: missing_fields.append("D")
-            if c2_prime is None: missing_fields.append("c₂'")
-            if phi2_prime is None: missing_fields.append("φ₂'")
-            
-            if missing_fields:
-                st.error(f"Missing values for: {', '.join(missing_fields)}")
+            # Check if we have enough for Kp calculation
+            if phi2_prime is None:
+                st.error("Cannot calculate Kp: Missing φ₂' value")
             else:
                 kp = math.tan(math.radians(45 + phi2_prime/2))**2
-                pp = 0.5 * kp * gamma2 * D**2 + 2 * c2_prime * D * math.sqrt(kp)
                 st.success(f"Kp = {kp:.4f}")
-                st.success(f"Pp = {pp:.2f} kN/m")
+                
+                # Check if we have enough for Pp calculation
+                pp_missing = []
+                if gamma2 is None: pp_missing.append("γ₂")
+                if D is None: pp_missing.append("D")
+                if c2_prime is None: pp_missing.append("c₂'")
+                
+                if pp_missing:
+                    st.warning(f"Cannot calculate Pp: Missing {', '.join(pp_missing)}")
+                else:
+                    pp = 0.5 * kp * gamma2 * D**2 + 2 * c2_prime * D * math.sqrt(kp)
+                    st.success(f"Pp = {pp:.2f} kN/m")
     
     with col2:
         st.subheader("Coulomb's Active Earth Pressure")
-        alpha = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha")
-        phi_prime = st.number_input("φ' (degrees)", value=None, placeholder="Enter value", key="phi")
+        alpha = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha", format="%.4f")
+        phi_prime = st.number_input("φ' (degrees)", value=None, placeholder="Enter value", key="phi", format="%.4f")
         
         if st.button("Calculate Ka", key="calc_ka"):
             missing_fields = []
@@ -53,15 +61,19 @@ with tab1:
             if phi_prime is None: missing_fields.append("φ'")
             
             if missing_fields:
-                st.error(f"Missing values for: {', '.join(missing_fields)}")
+                st.error(f"Cannot calculate Ka: Missing {', '.join(missing_fields)}")
             else:
                 alpha_rad = math.radians(alpha)
                 phi_rad = math.radians(phi_prime)
                 
-                numerator = math.cos(alpha_rad) - math.sqrt(math.cos(alpha_rad)**2 - math.cos(phi_rad)**2)
-                denominator = math.cos(alpha_rad) + math.sqrt(math.cos(alpha_rad)**2 - math.cos(phi_rad)**2)
-                ka = math.cos(alpha_rad) * (numerator / denominator)
-                st.success(f"Ka = {ka:.4f}")
+                # Check for valid input range
+                if math.cos(alpha_rad)**2 - math.cos(phi_rad)**2 < 0:
+                    st.error("Invalid input: cos²α must be greater than cos²φ'")
+                else:
+                    numerator = math.cos(alpha_rad) - math.sqrt(math.cos(alpha_rad)**2 - math.cos(phi_rad)**2)
+                    denominator = math.cos(alpha_rad) + math.sqrt(math.cos(alpha_rad)**2 - math.cos(phi_rad)**2)
+                    ka = math.cos(alpha_rad) * (numerator / denominator)
+                    st.success(f"Ka = {ka:.4f}")
 
 with tab2:
     st.header("Factor of Safety Against Sliding")
@@ -69,17 +81,17 @@ with tab2:
     col1, col2 = st.columns(2)
     
     with col1:
-        sigma_v = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv")
-        k1 = st.number_input("k₁", value=None, placeholder="Enter value", key="k1")
-        phi2_prime_slide = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_slide")
-        B_slide = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_slide")
+        sigma_v = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv", format="%.4f")
+        k1 = st.number_input("k₁", value=None, placeholder="Enter value", key="k1", format="%.4f")
+        phi2_prime_slide = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_slide", format="%.4f")
+        B_slide = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_slide", format="%.4f")
     
     with col2:
-        k2 = st.number_input("k₂", value=None, placeholder="Enter value", key="k2")
-        c2_prime_slide = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_slide")
-        Pp_slide = st.number_input("Pp (kN/m)", value=None, placeholder="Enter value", key="Pp_slide")
-        Pa_slide = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_slide")
-        alpha_slide = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_slide")
+        k2 = st.number_input("k₂", value=None, placeholder="Enter value", key="k2", format="%.4f")
+        c2_prime_slide = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_slide", format="%.4f")
+        Pp_slide = st.number_input("Pp (kN/m)", value=None, placeholder="Enter value", key="Pp_slide", format="%.4f")
+        Pa_slide = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_slide", format="%.4f")
+        alpha_slide = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_slide", format="%.4f")
     
     if st.button("Calculate FS", key="calc_fs"):
         missing_fields = []
@@ -94,7 +106,7 @@ with tab2:
         if alpha_slide is None: missing_fields.append("α")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate FS: Missing {', '.join(missing_fields)}")
         else:
             resisting_force = sigma_v * math.tan(math.radians(k1 * phi2_prime_slide)) + B_slide * k2 * c2_prime_slide + Pp_slide
             driving_force = Pa_slide * math.cos(math.radians(alpha_slide))
@@ -107,9 +119,9 @@ with tab2:
             st.success(f"Factor of Safety against Sliding = {fs:.3f}")
     
     st.header("Bearing Pressure Distribution")
-    sigma_v_bp = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_bp")
-    B_bp = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_bp")
-    e_bp = st.number_input("e (m)", value=None, placeholder="Enter value", key="e_bp")
+    sigma_v_bp = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_bp", format="%.4f")
+    B_bp = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_bp", format="%.4f")
+    e_bp = st.number_input("e (m)", value=None, placeholder="Enter value", key="e_bp", format="%.4f")
     
     if st.button("Calculate Bearing Pressure", key="calc_bp"):
         missing_fields = []
@@ -118,12 +130,16 @@ with tab2:
         if e_bp is None: missing_fields.append("e")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate bearing pressure: Missing {', '.join(missing_fields)}")
         else:
-            q_max = (sigma_v_bp / B_bp) * (1 + (6 * e_bp) / B_bp)
-            q_min = (sigma_v_bp / B_bp) * (1 - (6 * e_bp) / B_bp)
-            st.success(f"q_max = {q_max:.2f} kPa")
-            st.success(f"q_min = {q_min:.2f} kPa")
+            # Check for eccentricity limit
+            if e_bp > B_bp/6:
+                st.error("Eccentricity (e) cannot exceed B/6")
+            else:
+                q_max = (sigma_v_bp / B_bp) * (1 + (6 * e_bp) / B_bp)
+                q_min = (sigma_v_bp / B_bp) * (1 - (6 * e_bp) / B_bp)
+                st.success(f"q_max = {q_max:.2f} kPa")
+                st.success(f"q_min = {q_min:.2f} kPa")
 
 with tab3:
     st.header("General Bearing Capacity Equation")
@@ -131,28 +147,23 @@ with tab3:
     col1, col2 = st.columns(2)
     
     with col1:
-        c2_prime_bc = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_bc")
-        phi2_prime_bc = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_bc")
-        gamma2_bc = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2_bc")
-        B_prime_bc = st.number_input("B' (m)", value=None, placeholder="Enter value", key="B_prime_bc")
+        c2_prime_bc = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_bc", format="%.4f")
+        phi2_prime_bc = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_bc", format="%.4f")
+        gamma2_bc = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2_bc", format="%.4f")
+        B_prime_bc = st.number_input("B' (m)", value=None, placeholder="Enter value", key="B_prime_bc", format="%.4f")
     
     with col2:
-        q_bc = st.number_input("q (kPa)", value=None, placeholder="Enter value", key="q_bc")
-        D_bc = st.number_input("D (m)", value=None, placeholder="Enter value", key="D_bc")
-        psi_bc = st.number_input("ψ (degrees)", value=None, placeholder="Enter value", key="psi_bc")
+        q_bc = st.number_input("q (kPa)", value=None, placeholder="Enter value", key="q_bc", format="%.4f")
+        D_bc = st.number_input("D (m)", value=None, placeholder="Enter value", key="D_bc", format="%.4f")
+        psi_bc = st.number_input("ψ (degrees)", value=None, placeholder="Enter value", key="psi_bc", format="%.4f")
     
     if st.button("Calculate Bearing Capacity", key="calc_bc"):
         missing_fields = []
-        if c2_prime_bc is None: missing_fields.append("c₂'")
         if phi2_prime_bc is None: missing_fields.append("φ₂'")
-        if gamma2_bc is None: missing_fields.append("γ₂")
         if B_prime_bc is None: missing_fields.append("B'")
-        if q_bc is None: missing_fields.append("q")
-        if D_bc is None: missing_fields.append("D")
-        if psi_bc is None: missing_fields.append("ψ")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate bearing capacity: Missing {', '.join(missing_fields)}")
         else:
             # Bearing capacity factors
             Nq = math.exp(math.pi * math.tan(math.radians(phi2_prime_bc))) * (math.tan(math.radians(45 + phi2_prime_bc/2))**2)
@@ -160,27 +171,37 @@ with tab3:
             Ng = 2 * (Nq + 1) * math.tan(math.radians(phi2_prime_bc))
             
             # Depth factors
-            Fqd = 1 + 2 * math.tan(math.radians(phi2_prime_bc)) * (1 - math.sin(math.radians(phi2_prime_bc)))**2 * (D_bc / B_prime_bc)
+            Fqd = 1 + 2 * math.tan(math.radians(phi2_prime_bc)) * (1 - math.sin(math.radians(phi2_prime_bc)))**2 * (D_bc/B_prime_bc if D_bc is not None else 0)
             Fcd = Fqd - (1 - Fqd) / (Nc * math.tan(math.radians(phi2_prime_bc))) if phi2_prime_bc > 0 else 1
             Fyd = 1  # Common simplification
             
             # Inclination factors
-            Fci = Fqi = (1 - psi_bc / 90)**2
-            Fyi = (1 - psi_bc / phi2_prime_bc)**2 if phi2_prime_bc > 0 else 1
+            Fci = Fqi = (1 - (psi_bc/90 if psi_bc is not None else 0))**2
+            Fyi = (1 - (psi_bc/phi2_prime_bc if psi_bc is not None and phi2_prime_bc > 0 else 0))**2 if phi2_prime_bc > 0 else 1
+            
+            # Calculate each component separately
+            component1 = (c2_prime_bc * Nc * Fcd * Fci) if c2_prime_bc is not None else 0
+            component2 = (q_bc * Nq * Fqd * Fqi) if q_bc is not None else 0
+            component3 = (0.5 * gamma2_bc * B_prime_bc * Ng * Fyd * Fyi) if gamma2_bc is not None else 0
             
             # Ultimate bearing capacity
-            qu = (c2_prime_bc * Nc * Fcd * Fci + 
-                  q_bc * Nq * Fqd * Fqi + 
-                  0.5 * gamma2_bc * B_prime_bc * Ng * Fyd * Fyi)
+            qu = component1 + component2 + component3
             
             st.success(f"q_u = {qu:.2f} kPa")
+            
+            # Show which components were included
+            components_used = []
+            if c2_prime_bc is not None: components_used.append("cohesion")
+            if q_bc is not None: components_used.append("surcharge")
+            if gamma2_bc is not None: components_used.append("soil weight")
+            
+            st.info(f"Calculation includes: {', '.join(components_used) if components_used else 'no components (all inputs missing)'}")
             st.info(f"Nc = {Nc:.2f}, Nq = {Nq:.2f}, Nγ = {Ng:.2f}")
-            st.info(f"Fcd = {Fcd:.3f}, Fqd = {Fqd:.3f}, Fci = Fqi = {Fci:.3f}, Fyi = {Fyi:.3f}")
     
     st.header("Resultant Force Inclination")
-    Pa_psi = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_psi")
-    alpha_psi = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_psi")
-    sigma_v_psi = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_psi")
+    Pa_psi = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_psi", format="%.4f")
+    alpha_psi = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_psi", format="%.4f")
+    sigma_v_psi = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_psi", format="%.4f")
     
     if st.button("Calculate ψ", key="calc_psi"):
         missing_fields = []
@@ -189,7 +210,7 @@ with tab3:
         if sigma_v_psi is None: missing_fields.append("ΣV")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate ψ: Missing {', '.join(missing_fields)}")
         else:
             if sigma_v_psi == 0:
                 psi = 90
@@ -205,14 +226,14 @@ with tab4:
     col1, col2 = st.columns(2)
     
     with col1:
-        Cc = st.number_input("C_c", value=None, placeholder="Enter value", key="Cc")
-        Hc = st.number_input("H_c (m)", value=None, placeholder="Enter value", key="Hc")
-        e0 = st.number_input("e₀", value=None, placeholder="Enter value", key="e0")
-        sigma0_prime = st.number_input("σ₀' (kPa)", value=None, placeholder="Enter value", key="sigma0")
+        Cc = st.number_input("C_c", value=None, placeholder="Enter value", key="Cc", format="%.4f")
+        Hc = st.number_input("H_c (m)", value=None, placeholder="Enter value", key="Hc", format="%.4f")
+        e0 = st.number_input("e₀", value=None, placeholder="Enter value", key="e0", format="%.4f")
+        sigma0_prime = st.number_input("σ₀' (kPa)", value=None, placeholder="Enter value", key="sigma0", format="%.4f")
     
     with col2:
-        dsigma_p_prime = st.number_input("Δσ₍ₚ₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_p")
-        dsigma_f_prime = st.number_input("Δσ₍f₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_f")
+        dsigma_p_prime = st.number_input("Δσ₍ₚ₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_p", format="%.4f")
+        dsigma_f_prime = st.number_input("Δσ₍f₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_f", format="%.4f")
     
     if st.button("Calculate Settlement", key="calc_settlement"):
         missing_fields = []
@@ -224,15 +245,15 @@ with tab4:
         if dsigma_f_prime is None: missing_fields.append("Δσ₍f₎'")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate settlement: Missing {', '.join(missing_fields)}")
         else:
             settlement = (Cc * Hc / (1 + e0)) * math.log10((sigma0_prime + dsigma_p_prime + dsigma_f_prime) / sigma0_prime)
             st.success(f"S_c(p+f) = {settlement:.4f} m")
     
     st.header("Time Factor Calculation")
-    Tv = st.number_input("T_v", value=None, placeholder="Enter value", key="Tv")
-    H_tv = st.number_input("H (m)", value=None, placeholder="Enter value", key="H_tv")
-    Cv = st.number_input("C_v (m²/year)", value=None, placeholder="Enter value", key="Cv")
+    Tv = st.number_input("T_v", value=None, placeholder="Enter value", key="Tv", format="%.4f")
+    H_tv = st.number_input("H (m)", value=None, placeholder="Enter value", key="H_tv", format="%.4f")
+    Cv = st.number_input("C_v (m²/year)", value=None, placeholder="Enter value", key="Cv", format="%.4f")
     
     if st.button("Calculate Time", key="calc_time"):
         missing_fields = []
@@ -241,7 +262,7 @@ with tab4:
         if Cv is None: missing_fields.append("C_v")
         
         if missing_fields:
-            st.error(f"Missing values for: {', '.join(missing_fields)}")
+            st.error(f"Cannot calculate time: Missing {', '.join(missing_fields)}")
         else:
             H_drainage = H_tv / 2
             time = (Tv * H_drainage**2) / Cv
