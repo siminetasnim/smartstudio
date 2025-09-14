@@ -10,9 +10,21 @@ if 'clear_all' not in st.session_state:
 
 # Function to clear all inputs
 def clear_all_inputs():
-    for key in st.session_state.keys():
-        if key not in ['clear_all']:
-            del st.session_state[key]
+    # Create a list of all input keys
+    input_keys = [
+        'gamma2', 'D', 'c2', 'phi2', 'alpha', 'phi',
+        'sv', 'k1', 'phi2_slide', 'B_slide', 'k2', 'c2_slide', 'Pp_slide', 'Pa_slide', 'alpha_slide',
+        'sv_bp', 'B_bp', 'e_bp',
+        'c2_bc', 'phi2_bc', 'gamma2_bc', 'B_prime_bc', 'q_bc', 'D_bc', 'psi_bc',
+        'Pa_psi', 'alpha_psi', 'sv_psi',
+        'Cc', 'Hc', 'e0', 'sigma0', 'dsigma_p', 'dsigma_f',
+        'Tv', 'H_tv', 'Cv'
+    ]
+    
+    # Clear each input by setting to None
+    for key in input_keys:
+        st.session_state[key] = None
+    
     st.session_state.clear_all = True
 
 # Create tabs
@@ -25,10 +37,10 @@ with tab1:
     
     with col1:
         st.subheader("Rankine's Passive Earth Pressure")
-        gamma2 = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2", format="%.4f")
-        D = st.number_input("D (m)", value=None, placeholder="Enter value", key="D", format="%.4f")
-        c2_prime = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2", format="%.4f")
-        phi2_prime = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2", format="%.4f")
+        gamma2 = st.number_input("γ₂ (kN/m³)", value=st.session_state.get('gamma2', None), placeholder="Enter value", key="gamma2", format="%.4f")
+        D = st.number_input("D (m)", value=st.session_state.get('D', None), placeholder="Enter value", key="D", format="%.4f")
+        c2_prime = st.number_input("c₂' (kPa)", value=st.session_state.get('c2', None), placeholder="Enter value", key="c2", format="%.4f")
+        phi2_prime = st.number_input("φ₂' (degrees)", value=st.session_state.get('phi2', None), placeholder="Enter value", key="phi2", format="%.4f")
         
         if st.button("Calculate Kp and Pp", key="calc_kp_pp"):
             # Check if we have enough for Kp calculation
@@ -52,8 +64,8 @@ with tab1:
     
     with col2:
         st.subheader("Coulomb's Active Earth Pressure")
-        alpha = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha", format="%.4f")
-        phi_prime = st.number_input("φ' (degrees)", value=None, placeholder="Enter value", key="phi", format="%.4f")
+        alpha = st.number_input("α (degrees)", value=st.session_state.get('alpha', None), placeholder="Enter value", key="alpha", format="%.4f")
+        phi_prime = st.number_input("φ' (degrees)", value=st.session_state.get('phi', None), placeholder="Enter value", key="phi", format="%.4f")
         
         if st.button("Calculate Ka", key="calc_ka"):
             missing_fields = []
@@ -81,17 +93,17 @@ with tab2:
     col1, col2 = st.columns(2)
     
     with col1:
-        sigma_v = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv", format="%.4f")
-        k1 = st.number_input("k₁", value=None, placeholder="Enter value", key="k1", format="%.4f")
-        phi2_prime_slide = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_slide", format="%.4f")
-        B_slide = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_slide", format="%.4f")
+        sigma_v = st.number_input("ΣV (kN/m)", value=st.session_state.get('sv', None), placeholder="Enter value", key="sv", format="%.4f")
+        k1 = st.number_input("k₁", value=st.session_state.get('k1', None), placeholder="Enter value", key="k1", format="%.4f")
+        phi2_prime_slide = st.number_input("φ₂' (degrees)", value=st.session_state.get('phi2_slide', None), placeholder="Enter value", key="phi2_slide", format="%.4f")
+        B_slide = st.number_input("B (m)", value=st.session_state.get('B_slide', None), placeholder="Enter value", key="B_slide", format="%.4f")
     
     with col2:
-        k2 = st.number_input("k₂", value=None, placeholder="Enter value", key="k2", format="%.4f")
-        c2_prime_slide = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_slide", format="%.4f")
-        Pp_slide = st.number_input("Pp (kN/m)", value=None, placeholder="Enter value", key="Pp_slide", format="%.4f")
-        Pa_slide = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_slide", format="%.4f")
-        alpha_slide = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_slide", format="%.4f")
+        k2 = st.number_input("k₂", value=st.session_state.get('k2', None), placeholder="Enter value", key="k2", format="%.4f")
+        c2_prime_slide = st.number_input("c₂' (kPa)", value=st.session_state.get('c2_slide', None), placeholder="Enter value", key="c2_slide", format="%.4f")
+        Pp_slide = st.number_input("Pp (kN/m)", value=st.session_state.get('Pp_slide', None), placeholder="Enter value", key="Pp_slide", format="%.4f")
+        Pa_slide = st.number_input("Pₐ (kN/m)", value=st.session_state.get('Pa_slide', None), placeholder="Enter value", key="Pa_slide", format="%.4f")
+        alpha_slide = st.number_input("α (degrees)", value=st.session_state.get('alpha_slide', None), placeholder="Enter value", key="alpha_slide", format="%.4f")
     
     if st.button("Calculate FS", key="calc_fs"):
         missing_fields = []
@@ -119,9 +131,9 @@ with tab2:
             st.success(f"Factor of Safety against Sliding = {fs:.3f}")
     
     st.header("Bearing Pressure Distribution")
-    sigma_v_bp = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_bp", format="%.4f")
-    B_bp = st.number_input("B (m)", value=None, placeholder="Enter value", key="B_bp", format="%.4f")
-    e_bp = st.number_input("e (m)", value=None, placeholder="Enter value", key="e_bp", format="%.4f")
+    sigma_v_bp = st.number_input("ΣV (kN/m)", value=st.session_state.get('sv_bp', None), placeholder="Enter value", key="sv_bp", format="%.4f")
+    B_bp = st.number_input("B (m)", value=st.session_state.get('B_bp', None), placeholder="Enter value", key="B_bp", format="%.4f")
+    e_bp = st.number_input("e (m)", value=st.session_state.get('e_bp', None), placeholder="Enter value", key="e_bp", format="%.4f")
     
     if st.button("Calculate Bearing Pressure", key="calc_bp"):
         missing_fields = []
@@ -147,15 +159,15 @@ with tab3:
     col1, col2 = st.columns(2)
     
     with col1:
-        c2_prime_bc = st.number_input("c₂' (kPa)", value=None, placeholder="Enter value", key="c2_bc", format="%.4f")
-        phi2_prime_bc = st.number_input("φ₂' (degrees)", value=None, placeholder="Enter value", key="phi2_bc", format="%.4f")
-        gamma2_bc = st.number_input("γ₂ (kN/m³)", value=None, placeholder="Enter value", key="gamma2_bc", format="%.4f")
-        B_prime_bc = st.number_input("B' (m)", value=None, placeholder="Enter value", key="B_prime_bc", format="%.4f")
+        c2_prime_bc = st.number_input("c₂' (kPa)", value=st.session_state.get('c2_bc', None), placeholder="Enter value", key="c2_bc", format="%.4f")
+        phi2_prime_bc = st.number_input("φ₂' (degrees)", value=st.session_state.get('phi2_bc', None), placeholder="Enter value", key="phi2_bc", format="%.4f")
+        gamma2_bc = st.number_input("γ₂ (kN/m³)", value=st.session_state.get('gamma2_bc', None), placeholder="Enter value", key="gamma2_bc", format="%.4f")
+        B_prime_bc = st.number_input("B' (m)", value=st.session_state.get('B_prime_bc', None), placeholder="Enter value", key="B_prime_bc", format="%.4f")
     
     with col2:
-        q_bc = st.number_input("q (kPa)", value=None, placeholder="Enter value", key="q_bc", format="%.4f")
-        D_bc = st.number_input("D (m)", value=None, placeholder="Enter value", key="D_bc", format="%.4f")
-        psi_bc = st.number_input("ψ (degrees)", value=None, placeholder="Enter value", key="psi_bc", format="%.4f")
+        q_bc = st.number_input("q (kPa)", value=st.session_state.get('q_bc', None), placeholder="Enter value", key="q_bc", format="%.4f")
+        D_bc = st.number_input("D (m)", value=st.session_state.get('D_bc', None), placeholder="Enter value", key="D_bc", format="%.4f")
+        psi_bc = st.number_input("ψ (degrees)", value=st.session_state.get('psi_bc', None), placeholder="Enter value", key="psi_bc", format="%.4f")
     
     if st.button("Calculate Bearing Capacity", key="calc_bc"):
         missing_fields = []
@@ -199,9 +211,9 @@ with tab3:
             st.info(f"Nc = {Nc:.2f}, Nq = {Nq:.2f}, Nγ = {Ng:.2f}")
     
     st.header("Resultant Force Inclination")
-    Pa_psi = st.number_input("Pₐ (kN/m)", value=None, placeholder="Enter value", key="Pa_psi", format="%.4f")
-    alpha_psi = st.number_input("α (degrees)", value=None, placeholder="Enter value", key="alpha_psi", format="%.4f")
-    sigma_v_psi = st.number_input("ΣV (kN/m)", value=None, placeholder="Enter value", key="sv_psi", format="%.4f")
+    Pa_psi = st.number_input("Pₐ (kN/m)", value=st.session_state.get('Pa_psi', None), placeholder="Enter value", key="Pa_psi", format="%.4f")
+    alpha_psi = st.number_input("α (degrees)", value=st.session_state.get('alpha_psi', None), placeholder="Enter value", key="alpha_psi", format="%.4f")
+    sigma_v_psi = st.number_input("ΣV (kN/m)", value=st.session_state.get('sv_psi', None), placeholder="Enter value", key="sv_psi", format="%.4f")
     
     if st.button("Calculate ψ", key="calc_psi"):
         missing_fields = []
@@ -226,14 +238,14 @@ with tab4:
     col1, col2 = st.columns(2)
     
     with col1:
-        Cc = st.number_input("C_c", value=None, placeholder="Enter value", key="Cc", format="%.4f")
-        Hc = st.number_input("H_c (m)", value=None, placeholder="Enter value", key="Hc", format="%.4f")
-        e0 = st.number_input("e₀", value=None, placeholder="Enter value", key="e0", format="%.4f")
-        sigma0_prime = st.number_input("σ₀' (kPa)", value=None, placeholder="Enter value", key="sigma0", format="%.4f")
+        Cc = st.number_input("C_c", value=st.session_state.get('Cc', None), placeholder="Enter value", key="Cc", format="%.4f")
+        Hc = st.number_input("H_c (m)", value=st.session_state.get('Hc', None), placeholder="Enter value", key="Hc", format="%.4f")
+        e0 = st.number_input("e₀", value=st.session_state.get('e0', None), placeholder="Enter value", key="e0", format="%.4f")
+        sigma0_prime = st.number_input("σ₀' (kPa)", value=st.session_state.get('sigma0', None), placeholder="Enter value", key="sigma0", format="%.4f")
     
     with col2:
-        dsigma_p_prime = st.number_input("Δσ₍ₚ₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_p", format="%.4f")
-        dsigma_f_prime = st.number_input("Δσ₍f₎' (kPa)", value=None, placeholder="Enter value", key="dsigma_f", format="%.4f")
+        dsigma_p_prime = st.number_input("Δσ₍ₚ₎' (kPa)", value=st.session_state.get('dsigma_p', None), placeholder="Enter value", key="dsigma_p", format="%.4f")
+        dsigma_f_prime = st.number_input("Δσ₍f₎' (kPa)", value=st.session_state.get('dsigma_f', None), placeholder="Enter value", key="dsigma_f", format="%.4f")
     
     if st.button("Calculate Settlement", key="calc_settlement"):
         missing_fields = []
@@ -251,9 +263,9 @@ with tab4:
             st.success(f"S_c(p+f) = {settlement:.4f} m")
     
     st.header("Time Factor Calculation")
-    Tv = st.number_input("T_v", value=None, placeholder="Enter value", key="Tv", format="%.4f")
-    H_tv = st.number_input("H (m)", value=None, placeholder="Enter value", key="H_tv", format="%.4f")
-    Cv = st.number_input("C_v (m²/year)", value=None, placeholder="Enter value", key="Cv", format="%.4f")
+    Tv = st.number_input("T_v", value=st.session_state.get('Tv', None), placeholder="Enter value", key="Tv", format="%.4f")
+    H_tv = st.number_input("H (m)", value=st.session_state.get('H_tv', None), placeholder="Enter value", key="H_tv", format="%.4f")
+    Cv = st.number_input("C_v (m²/year)", value=st.session_state.get('Cv', None), placeholder="Enter value", key="Cv", format="%.4f")
     
     if st.button("Calculate Time", key="calc_time"):
         missing_fields = []
