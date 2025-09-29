@@ -222,7 +222,7 @@ with tab1:
             category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                   format_func=lambda x: f"{CATEGORIES[x]} {x}")
             evidence = st.text_area("📝 The Evidence", 
-                                  placeholder="e.g., 'When I was stressed about work, you listened patiently and helped me break it down into manageable steps...'",
+                                  placeholder="",
                                   height=100)
             impact = st.slider("💫 Impact Level", 1, 5, 3, 
                              help="How much did this moment matter?")
