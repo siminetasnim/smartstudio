@@ -18,6 +18,12 @@ if 'evidence_df' not in st.session_state:
 if 'reframing_history' not in st.session_state:
     st.session_state.reframing_history = []
 
+if 'editing_reframing' not in st.session_state:
+    st.session_state.editing_reframing = None
+
+if 'editing_evidence' not in st.session_state:
+    st.session_state.editing_evidence = None
+
 # Custom CSS for cuteness
 st.markdown("""
 <style>
@@ -68,6 +74,17 @@ CATEGORIES = {
     "Patience & Understanding": "⏳"
 }
 
+# Better keyword mapping for relevant evidence
+CATEGORY_KEYWORDS = {
+    "Loving Action": ['love', 'loving', 'affection', 'care', 'caring', 'romantic', 'sweet', 'kind', 'kindness'],
+    "Considerate Moment": ['considerate', 'thoughtful', 'thinking of you', 'noticed', 'remembered', 'attention'],
+    "Growth & Maturity": ['grow', 'growth', 'mature', 'maturity', 'learn', 'learning', 'improve', 'better', 'progress'],
+    "Smart Insight": ['smart', 'intelligent', 'clever', 'insight', 'wisdom', 'knowledge', 'brilliant'],
+    "Emotional Strength": ['strong', 'strength', 'resilient', 'brave', 'courage', 'emotional', 'support'],
+    "Problem-Solving": ['solve', 'solution', 'fix', 'resolve', 'problem', 'issue', 'challenge'],
+    "Patience & Understanding": ['patient', 'patience', 'understand', 'understanding', 'listen', 'calm']
+}
+
 def save_data():
     """Save data to URL parameters with proper date handling"""
     # Convert dates to strings for JSON serialization
@@ -113,24 +130,17 @@ def get_relevant_evidence(negative_thought):
     if st.session_state.evidence_df.empty:
         return []
     
-    # Simple keyword matching for relevance
     negative_lower = negative_thought.lower()
-    relevant_categories = []
+    relevant_categories = set()
     
-    # Map negative thought patterns to relevant categories
-    if any(word in negative_lower for word in ['stupid', 'dumb', 'not smart', 'ignorant']):
-        relevant_categories.extend(['Smart Insight', 'Problem-Solving'])
-    if any(word in negative_lower for word in ['inconsiderate', 'selfish', 'thoughtless']):
-        relevant_categories.extend(['Considerate Moment', 'Loving Action', 'Sweet Gesture'])
-    if any(word in negative_lower for word in ['weak', 'can\'t handle', 'overwhelmed']):
-        relevant_categories.extend(['Emotional Strength', 'Growth & Maturity'])
-    if any(word in negative_lower for word in ['failure', 'mess up', 'mistake']):
-        relevant_categories.extend(['Growth & Maturity', 'Personal Breakthrough', 'Problem-Solving'])
-    if any(word in negative_lower for word in ['alone', 'misunderstood', 'nobody cares']):
-        relevant_categories.extend(['Loving Action', 'Teamwork Win', 'Considerate Moment'])
+    # Check each category's keywords against the negative thought
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in negative_lower:
+                relevant_categories.add(category)
+                break
     
-    # Get unique categories and return relevant evidence
-    relevant_categories = list(set(relevant_categories))
+    # If we found relevant categories, get evidence from those categories
     if relevant_categories:
         relevant_evidence = st.session_state.evidence_df[
             st.session_state.evidence_df['Category'].isin(relevant_categories)
@@ -139,6 +149,59 @@ def get_relevant_evidence(negative_thought):
     
     # If no specific matches, return highest impact evidence
     return st.session_state.evidence_df.nlargest(2, 'Impact').to_dict('records')
+
+def edit_reframing_form(index):
+    """Form to edit a reframing entry"""
+    entry = st.session_state.reframing_history[index]
+    
+    with st.form(f"edit_reframing_{index}"):
+        st.write("**Edit your reframing:**")
+        edited_original = st.text_area("Original thought:", value=entry['original'], key=f"edit_orig_{index}")
+        edited_reframed = st.text_area("Balanced perspective:", value=entry['reframed'], key=f"edit_ref_{index}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.form_submit_button("💾 Save Changes"):
+                st.session_state.reframing_history[index] = {
+                    "date": entry['date'],
+                    "original": edited_original,
+                    "reframed": edited_reframed
+                }
+                save_data()
+                st.session_state.editing_reframing = None
+                st.rerun()
+        with col2:
+            if st.form_submit_button("❌ Cancel"):
+                st.session_state.editing_reframing = None
+                st.rerun()
+
+def edit_evidence_form(index):
+    """Form to edit an evidence entry"""
+    row = st.session_state.evidence_df.iloc[index]
+    
+    with st.form(f"edit_evidence_{index}"):
+        st.write("**Edit your evidence:**")
+        edited_date = st.date_input("Date", value=datetime.strptime(str(row['Date']), '%Y-%m-%d'), key=f"edit_date_{index}")
+        edited_category = st.selectbox("Category", options=list(CATEGORIES.keys()), 
+                                     index=list(CATEGORIES.keys()).index(row['Category']), 
+                                     key=f"edit_cat_{index}")
+        edited_evidence = st.text_area("Evidence", value=row['Evidence'], key=f"edit_ev_{index}")
+        edited_impact = st.slider("Impact", 1, 5, row['Impact'], key=f"edit_imp_{index}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.form_submit_button("💾 Save Changes"):
+                st.session_state.evidence_df.at[index, 'Date'] = edited_date
+                st.session_state.evidence_df.at[index, 'Category'] = edited_category
+                st.session_state.evidence_df.at[index, 'Evidence'] = edited_evidence
+                st.session_state.evidence_df.at[index, 'Impact'] = edited_impact
+                save_data()
+                st.session_state.editing_evidence = None
+                st.rerun()
+        with col2:
+            if st.form_submit_button("❌ Cancel"):
+                st.session_state.editing_evidence = None
+                st.rerun()
 
 # Load existing data
 load_data()
@@ -199,26 +262,33 @@ with tab1:
                 (st.session_state.evidence_df['Impact'] >= min_impact)
             ]
             
-            # Display entries with delete buttons
+            # Display entries with edit/delete buttons
             for idx, row in filtered_df.sort_values('Date', ascending=False).iterrows():
                 with st.container():
-                    col_d1, col_d2 = st.columns([4, 1])
-                    with col_d1:
-                        st.markdown(f"""
-                        <div class="evidence-entry">
-                            <div style='display: flex; justify-content: space-between; align-items: start;'>
-                                <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
-                                <small>Impact: {'⭐' * row['Impact']}</small>
+                    if st.session_state.editing_evidence == idx:
+                        edit_evidence_form(idx)
+                    else:
+                        col_d1, col_d2, col_d3 = st.columns([4, 1, 1])
+                        with col_d1:
+                            st.markdown(f"""
+                            <div class="evidence-entry">
+                                <div style='display: flex; justify-content: space-between; align-items: start;'>
+                                    <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
+                                    <small>Impact: {'⭐' * row['Impact']}</small>
+                                </div>
+                                <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
+                                <small>📅 {row['Date'].strftime('%Y-%m-%d')}</small>
                             </div>
-                            <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
-                            <small>📅 {row['Date'].strftime('%Y-%m-%d')}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with col_d2:
-                        if st.button("🗑️", key=f"delete-{idx}"):
-                            st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
-                            save_data()
-                            st.rerun()
+                            """, unsafe_allow_html=True)
+                        with col_d2:
+                            if st.button("✏️", key=f"edit_{idx}"):
+                                st.session_state.editing_evidence = idx
+                                st.rerun()
+                        with col_d3:
+                            if st.button("🗑️", key=f"delete_{idx}"):
+                                st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
+                                save_data()
+                                st.rerun()
         else:
             st.info("✨ Your evidence locker is waiting for its first entry...")
 
@@ -229,7 +299,7 @@ with tab2:
     
     with col1:
         negative_thought = st.text_area("What's the thought you'd like to reframe?",
-                                      placeholder="e.g., 'I messed up that conversation and now she thinks I'm inconsiderate...'",
+                                      placeholder="e.g., 'I feel like I'm not loving enough in our relationship...'",
                                       height=150,
                                       key="negative_thought_input")
         
@@ -290,15 +360,31 @@ with tab2:
                         del st.session_state.current_thought
                     st.rerun()
         
-        # Show reframing history
+        # Show reframing history with edit/delete
         if st.session_state.reframing_history:
             st.subheader("📖 Your Reframing History")
-            for i, entry in enumerate(reversed(st.session_state.reframing_history[-5:])):  # Show last 5
-                with st.expander(f"Reframing from {entry['date']}"):
-                    st.write("**Original thought:**")
-                    st.info(entry['original'])
-                    st.write("**Balanced perspective:**")
-                    st.success(entry['reframed'])
+            for i, entry in enumerate(reversed(st.session_state.reframing_history)):
+                idx = len(st.session_state.reframing_history) - 1 - i  # Get original index
+                
+                if st.session_state.editing_reframing == idx:
+                    edit_reframing_form(idx)
+                else:
+                    with st.expander(f"Reframing from {entry['date']}", expanded=i < 3):  # First 3 expanded
+                        st.write("**Original thought:**")
+                        st.info(entry['original'])
+                        st.write("**Balanced perspective:**")
+                        st.success(entry['reframed'])
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("✏️ Edit", key=f"edit_ref_{idx}"):
+                                st.session_state.editing_reframing = idx
+                                st.rerun()
+                        with col2:
+                            if st.button("🗑️ Delete", key=f"del_ref_{idx}"):
+                                st.session_state.reframing_history.pop(idx)
+                                save_data()
+                                st.rerun()
 
 with tab3:
     st.header("📊 Your Growth Dashboard")
