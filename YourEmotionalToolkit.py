@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime
-import altair as alt  # Using Altair instead of Plotly
+import altair as alt
 
 # Page config
 st.set_page_config(
@@ -69,25 +69,34 @@ CATEGORIES = {
 }
 
 def save_data():
-    """Save data to browser local storage"""
+    """Save data to URL parameters"""
     evidence_json = st.session_state.evidence_df.to_json()
-    st.experimental_set_query_params(
-        evidence_data=evidence_json,
-        reframing_data=json.dumps(st.session_state.reframing_history)
-    )
+    reframing_json = json.dumps(st.session_state.reframing_history)
+    
+    # Update query parameters
+    st.query_params.evidence_data = evidence_json
+    st.query_params.reframing_data = reframing_json
 
 def load_data():
     """Load data from URL parameters"""
-    params = st.experimental_get_query_params()
+    # Get current query parameters
+    params = dict(st.query_params)
+    
     if 'evidence_data' in params:
         try:
-            evidence_json = params['evidence_data'][0]
+            evidence_json = params['evidence_data']
+            if isinstance(evidence_json, list):
+                evidence_json = evidence_json[0]
             st.session_state.evidence_df = pd.read_json(evidence_json)
-        except:
+        except Exception as e:
             st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
+    
     if 'reframing_data' in params:
         try:
-            st.session_state.reframing_history = json.loads(params['reframing_data'][0])
+            reframing_json = params['reframing_data']
+            if isinstance(reframing_json, list):
+                reframing_json = reframing_json[0]
+            st.session_state.reframing_history = json.loads(reframing_json)
         except:
             st.session_state.reframing_history = []
 
@@ -100,7 +109,7 @@ st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_a
 tab1, tab2, tab3 = st.tabs(["📂 Evidence Locker", "🔍 Reframing Engine", "📊 Growth Dashboard"])
 
 with tab1:
-    st.header("📂 Build Your Case for Awesome")
+    st.header("📂 Build Your Case for Awesomeness")
     
     col1, col2 = st.columns([1, 2])
     
@@ -110,7 +119,7 @@ with tab1:
             category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                   format_func=lambda x: f"{CATEGORIES[x]} {x}")
             evidence = st.text_area("📝 The Evidence", 
-                                  placeholder="e.g., 'When I was stressed about work, you listened patiently and helped me break it down into manageable steps...'",
+                                  placeholder="",
                                   height=100)
             impact = st.slider("💫 Impact Level", 1, 5, 3, 
                              help="How much did this moment matter?")
