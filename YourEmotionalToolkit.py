@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 from datetime import datetime
-import plotly.express as px
+import altair as alt  # Using Altair instead of Plotly
 
 # Page config
 st.set_page_config(
@@ -42,6 +42,14 @@ st.markdown("""
         font-weight: bold;
         margin: 0.2rem;
     }
+    .evidence-entry {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        color: white;
+        border-left: 5px solid #ffd93d;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,10 +80,16 @@ def load_data():
     """Load data from URL parameters"""
     params = st.experimental_get_query_params()
     if 'evidence_data' in params:
-        evidence_json = params['evidence_data'][0]
-        st.session_state.evidence_df = pd.read_json(evidence_json)
+        try:
+            evidence_json = params['evidence_data'][0]
+            st.session_state.evidence_df = pd.read_json(evidence_json)
+        except:
+            st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
     if 'reframing_data' in params:
-        st.session_state.reframing_history = json.loads(params['reframing_data'][0])
+        try:
+            st.session_state.reframing_history = json.loads(params['reframing_data'][0])
+        except:
+            st.session_state.reframing_history = []
 
 # Load existing data
 load_data()
@@ -91,7 +105,7 @@ with tab1:
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        with st.form("evidence_form"):
+        with st.form("evidence_form", clear_on_submit=True):
             date = st.date_input("📅 Date", datetime.now())
             category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                   format_func=lambda x: f"{CATEGORIES[x]} {x}")
@@ -120,7 +134,7 @@ with tab1:
 
     with col2:
         if not st.session_state.evidence_df.empty:
-            st.subheader("Your Evidence Collection")
+            st.subheader(f"Your Evidence Collection ({len(st.session_state.evidence_df)} entries)")
             
             # Filter options
             col_f1, col_f2 = st.columns(2)
@@ -139,27 +153,23 @@ with tab1:
             # Display entries with delete buttons
             for idx, row in filtered_df.sort_values('Date', ascending=False).iterrows():
                 with st.container():
-                    st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                border-radius: 15px; padding: 1.5rem; margin: 1rem 0; color: white;'>
-                        <div style='display: flex; justify-content: space-between; align-items: start;'>
-                            <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
-                            <div style='display: flex; gap: 10px; align-items: center;'>
+                    col_d1, col_d2 = st.columns([4, 1])
+                    with col_d1:
+                        st.markdown(f"""
+                        <div class="evidence-entry">
+                            <div style='display: flex; justify-content: space-between; align-items: start;'>
+                                <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
                                 <small>Impact: {'⭐' * row['Impact']}</small>
-                                <button onclick='document.getElementById("delete-{idx}").click()' 
-                                        style='background: #ff6b6b; border: none; border-radius: 50%; 
-                                               width: 25px; height: 25px; color: white; cursor: pointer;'>×</button>
                             </div>
+                            <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
+                            <small>📅 {row['Date']}</small>
                         </div>
-                        <p style='margin: 0.5rem 0;'>{row['Evidence']}</p>
-                        <small>📅 {row['Date']}</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button("×", key=f"delete-{idx}"):
-                        st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
-                        save_data()
-                        st.rerun()
+                        """, unsafe_allow_html=True)
+                    with col_d2:
+                        if st.button("🗑️", key=f"delete-{idx}"):
+                            st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
+                            save_data()
+                            st.rerun()
         else:
             st.info("✨ Your evidence locker is waiting for its first entry...")
 
@@ -170,7 +180,8 @@ with tab2:
     
     with col1:
         negative_thought = st.text_area("What's the thought you'd like to reframe?",
-                                      placeholder="e.g., 'I messed up that conversation and now she thinks I'm inconsiderate...'")
+                                      placeholder="e.g., 'I messed up that conversation and now she thinks I'm inconsiderate...'",
+                                      height=150)
         
         if st.button("🧠 Analyze Thought"):
             if negative_thought:
@@ -179,76 +190,118 @@ with tab2:
 
     with col2:
         if 'current_thought' in st.session_state:
-            st.subheader("Let's break this down:")
+            st.subheader("Let's break this down together:")
             
-            st.write("**1. Identify the core belief:**")
-            st.info("Underneath this thought, what's the story you're telling yourself?")
+            st.write("**1. 🎯 Identify the core belief:**")
+            st.info("What's the underlying story you're telling yourself about this situation?")
             
-            st.write("**2. Look for evidence:**")
-            st.success("Check your Evidence Locker tab - what does your actual track record show?")
+            st.write("**2. 📊 Look for evidence:**")
+            if not st.session_state.evidence_df.empty:
+                st.success("Check your Evidence Locker - your track record shows your true character!")
+            else:
+                st.warning("Start building your evidence collection to see your amazing qualities!")
             
-            st.write("**3. Consider alternative perspectives:**")
-            st.warning("How would someone who loves you see this situation?")
+            st.write("**3. 🔄 Consider alternative perspectives:**")
+            st.warning("How would someone who loves you unconditionally see this situation?")
             
-            st.write("**4. Construct a balanced view:**")
-            reframed = st.text_area("Write your new, balanced perspective:",
+            st.write("**4. 💡 Construct a balanced view:**")
+            reframed = st.text_area("Write your new, more balanced perspective:",
+                                  placeholder="e.g., 'I'm learning and growing. One conversation doesn't define my entire character...'",
+                                  height=100,
                                   key="reframed_perspective")
             
-            if st.button("💾 Save This Reframing"):
-                if reframed:
-                    reframing_entry = {
-                        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "original": st.session_state.current_thought,
-                        "reframed": reframed
-                    }
-                    st.session_state.reframing_history.append(reframing_entry)
-                    save_data()
-                    st.success("Reframing saved to your growth history!")
-                    del st.session_state.current_thought
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("💾 Save This Reframing"):
+                    if reframed:
+                        reframing_entry = {
+                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "original": st.session_state.current_thought,
+                            "reframed": reframed
+                        }
+                        st.session_state.reframing_history.append(reframing_entry)
+                        save_data()
+                        st.success("Reframing saved to your growth history!")
+                        del st.session_state.current_thought
+                        st.rerun()
+            with col_b2:
+                if st.button("🔄 Start Over"):
+                    if 'current_thought' in st.session_state:
+                        del st.session_state.current_thought
                     st.rerun()
 
 with tab3:
     st.header("📊 Your Growth Dashboard")
     
     if not st.session_state.evidence_df.empty:
+        # Convert Date to datetime for proper sorting
+        st.session_state.evidence_df['Date'] = pd.to_datetime(st.session_state.evidence_df['Date'])
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            # Category distribution
-            category_counts = st.session_state.evidence_df['Category'].value_counts()
-            fig1 = px.pie(values=category_counts.values, names=category_counts.index,
-                         title="📈 Your Superpowers Distribution")
-            st.plotly_chart(fig1, use_container_width=True)
+            st.subheader("📈 Your Superpowers Distribution")
+            
+            # Simple bar chart with Altair
+            category_counts = st.session_state.evidence_df['Category'].value_counts().reset_index()
+            category_counts.columns = ['Category', 'Count']
+            
+            chart = alt.Chart(category_counts).mark_bar().encode(
+                x='Count:Q',
+                y=alt.Y('Category:N', sort='-x'),
+                color=alt.value('#ff6b6b')
+            ).properties(height=300)
+            
+            st.altair_chart(chart, use_container_width=True)
         
         with col2:
-            # Impact over time
-            st.session_state.evidence_df['Date'] = pd.to_datetime(st.session_state.evidence_df['Date'])
-            monthly_impact = st.session_state.evidence_df.groupby(
-                st.session_state.evidence_df['Date'].dt.to_period('M')
-            )['Impact'].mean().reset_index()
-            monthly_impact['Date'] = monthly_impact['Date'].dt.to_timestamp()
+            st.subheader("🚀 Impact Over Time")
             
-            fig2 = px.line(monthly_impact, x='Date', y='Impact',
-                          title="🚀 Your Growth Journey",
-                          markers=True)
-            st.plotly_chart(fig2, use_container_width=True)
+            # Monthly impact average
+            monthly_data = st.session_state.evidence_df.copy()
+            monthly_data['Month'] = monthly_data['Date'].dt.to_period('M').astype(str)
+            monthly_avg = monthly_data.groupby('Month')['Impact'].mean().reset_index()
+            
+            if len(monthly_avg) > 1:
+                line_chart = alt.Chart(monthly_avg).mark_line(point=True).encode(
+                    x='Month:N',
+                    y='Impact:Q',
+                    color=alt.value('#667eea')
+                ).properties(height=300)
+                st.altair_chart(line_chart, use_container_width=True)
+            else:
+                st.info("Add more entries to see your growth trend!")
+        
+        # Statistics
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        with col_s1:
+            st.metric("Total Entries", len(st.session_state.evidence_df))
+        with col_s2:
+            avg_impact = st.session_state.evidence_df['Impact'].mean()
+            st.metric("Average Impact", f"{avg_impact:.1f} ⭐")
+        with col_s3:
+            top_category = st.session_state.evidence_df['Category'].mode()[0] if not st.session_state.evidence_df.empty else "N/A"
+            st.metric("Top Strength", top_category)
+        with col_s4:
+            days_span = (st.session_state.evidence_df['Date'].max() - st.session_state.evidence_df['Date'].min()).days if len(st.session_state.evidence_df) > 1 else 0
+            st.metric("Journey Length", f"{days_span} days")
         
         # Recent milestones
         st.subheader("🎯 Recent Growth Milestones")
         recent_high_impact = st.session_state.evidence_df.nlargest(3, 'Impact')
         for _, milestone in recent_high_impact.iterrows():
-            st.markdown(f"**{milestone['Category']}** (Impact: {'⭐' * milestone['Impact']})")
-            st.caption(f"📅 {milestone['Date'].strftime('%Y-%m-%d')}: {milestone['Evidence']}")
-            st.write("---")
+            with st.expander(f"{milestone['Category']} (Impact: {'⭐' * milestone['Impact']}) - {milestone['Date'].strftime('%Y-%m-%d')}"):
+                st.write(milestone['Evidence'])
     
     else:
-        st.info("Start building your evidence collection to see your growth dashboard!")
+        st.info("Start building your evidence collection to see your amazing growth dashboard!")
 
 # Footer
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center; color: #ff6b6b;'>"
-    "Built with 💖 for someone who's growing more wonderful every day"
+    "<div style='text-align: center; color: #ff6b6b; font-style: italic;'>"
+    "Built with 💖 for someone who's growing more wonderful every day · "
+    "Your data is saved in this URL - bookmark it to keep your progress!"
     "</div>",
     unsafe_allow_html=True
 )
