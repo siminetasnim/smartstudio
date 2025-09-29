@@ -27,21 +27,6 @@ st.markdown("""
         text-align: center;
         margin-bottom: 2rem;
     }
-    .cute-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 20px;
-        padding: 2rem;
-        color: white;
-        margin: 1rem 0;
-    }
-    .category-pill {
-        background-color: #ffd93d;
-        color: #6b4f4f;
-        padding: 0.3rem 1rem;
-        border-radius: 15px;
-        font-weight: bold;
-        margin: 0.2rem;
-    }
     .evidence-entry {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 15px;
@@ -49,6 +34,21 @@ st.markdown("""
         margin: 1rem 0;
         color: white;
         border-left: 5px solid #ffd93d;
+    }
+    .reframing-entry {
+        background: linear-gradient(135deg, #6aeb9e 0%, #45b47c 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        color: white;
+        border-left: 5px solid #ffd93d;
+    }
+    .relevant-evidence {
+        background: linear-gradient(135deg, #ffb347 0%, #ffcc33 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        color: #333;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -69,8 +69,12 @@ CATEGORIES = {
 }
 
 def save_data():
-    """Save data to URL parameters"""
-    evidence_json = st.session_state.evidence_df.to_json()
+    """Save data to URL parameters with proper date handling"""
+    # Convert dates to strings for JSON serialization
+    df_to_save = st.session_state.evidence_df.copy()
+    df_to_save['Date'] = df_to_save['Date'].astype(str)
+    
+    evidence_json = df_to_save.to_json(orient='records')
     reframing_json = json.dumps(st.session_state.reframing_history)
     
     # Update query parameters
@@ -78,8 +82,7 @@ def save_data():
     st.query_params.reframing_data = reframing_json
 
 def load_data():
-    """Load data from URL parameters"""
-    # Get current query parameters
+    """Load data from URL parameters with proper date handling"""
     params = dict(st.query_params)
     
     if 'evidence_data' in params:
@@ -87,7 +90,12 @@ def load_data():
             evidence_json = params['evidence_data']
             if isinstance(evidence_json, list):
                 evidence_json = evidence_json[0]
-            st.session_state.evidence_df = pd.read_json(evidence_json)
+            
+            # Load the data and convert dates properly
+            loaded_df = pd.read_json(evidence_json, orient='records')
+            if not loaded_df.empty:
+                loaded_df['Date'] = pd.to_datetime(loaded_df['Date']).dt.date
+                st.session_state.evidence_df = loaded_df
         except Exception as e:
             st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
     
@@ -100,6 +108,38 @@ def load_data():
         except:
             st.session_state.reframing_history = []
 
+def get_relevant_evidence(negative_thought):
+    """Find evidence from the locker that's relevant to the current negative thought"""
+    if st.session_state.evidence_df.empty:
+        return []
+    
+    # Simple keyword matching for relevance
+    negative_lower = negative_thought.lower()
+    relevant_categories = []
+    
+    # Map negative thought patterns to relevant categories
+    if any(word in negative_lower for word in ['stupid', 'dumb', 'not smart', 'ignorant']):
+        relevant_categories.extend(['Smart Insight', 'Problem-Solving'])
+    if any(word in negative_lower for word in ['inconsiderate', 'selfish', 'thoughtless']):
+        relevant_categories.extend(['Considerate Moment', 'Loving Action', 'Sweet Gesture'])
+    if any(word in negative_lower for word in ['weak', 'can\'t handle', 'overwhelmed']):
+        relevant_categories.extend(['Emotional Strength', 'Growth & Maturity'])
+    if any(word in negative_lower for word in ['failure', 'mess up', 'mistake']):
+        relevant_categories.extend(['Growth & Maturity', 'Personal Breakthrough', 'Problem-Solving'])
+    if any(word in negative_lower for word in ['alone', 'misunderstood', 'nobody cares']):
+        relevant_categories.extend(['Loving Action', 'Teamwork Win', 'Considerate Moment'])
+    
+    # Get unique categories and return relevant evidence
+    relevant_categories = list(set(relevant_categories))
+    if relevant_categories:
+        relevant_evidence = st.session_state.evidence_df[
+            st.session_state.evidence_df['Category'].isin(relevant_categories)
+        ].nlargest(3, 'Impact')
+        return relevant_evidence.to_dict('records')
+    
+    # If no specific matches, return highest impact evidence
+    return st.session_state.evidence_df.nlargest(2, 'Impact').to_dict('records')
+
 # Load existing data
 load_data()
 
@@ -109,7 +149,7 @@ st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_a
 tab1, tab2, tab3 = st.tabs(["📂 Evidence Locker", "🔍 Reframing Engine", "📊 Growth Dashboard"])
 
 with tab1:
-    st.header("📂 Build Your Case for Awesomeness")
+    st.header("📂 Build Your Case for Awesome")
     
     col1, col2 = st.columns([1, 2])
     
@@ -119,7 +159,7 @@ with tab1:
             category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                   format_func=lambda x: f"{CATEGORIES[x]} {x}")
             evidence = st.text_area("📝 The Evidence", 
-                                  placeholder="",
+                                  placeholder="e.g., 'When I was stressed about work, you listened patiently and helped me break it down into manageable steps...'",
                                   height=100)
             impact = st.slider("💫 Impact Level", 1, 5, 3, 
                              help="How much did this moment matter?")
@@ -128,7 +168,7 @@ with tab1:
             
             if submitted and evidence:
                 new_entry = {
-                    "Date": date.strftime("%Y-%m-%d"),
+                    "Date": date,
                     "Category": category,
                     "Evidence": evidence,
                     "Impact": impact
@@ -171,7 +211,7 @@ with tab1:
                                 <small>Impact: {'⭐' * row['Impact']}</small>
                             </div>
                             <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
-                            <small>📅 {row['Date']}</small>
+                            <small>📅 {row['Date'].strftime('%Y-%m-%d')}</small>
                         </div>
                         """, unsafe_allow_html=True)
                     with col_d2:
@@ -190,7 +230,8 @@ with tab2:
     with col1:
         negative_thought = st.text_area("What's the thought you'd like to reframe?",
                                       placeholder="e.g., 'I messed up that conversation and now she thinks I'm inconsiderate...'",
-                                      height=150)
+                                      height=150,
+                                      key="negative_thought_input")
         
         if st.button("🧠 Analyze Thought"):
             if negative_thought:
@@ -204,11 +245,21 @@ with tab2:
             st.write("**1. 🎯 Identify the core belief:**")
             st.info("What's the underlying story you're telling yourself about this situation?")
             
-            st.write("**2. 📊 Look for evidence:**")
-            if not st.session_state.evidence_df.empty:
-                st.success("Check your Evidence Locker - your track record shows your true character!")
+            st.write("**2. 📊 Relevant Evidence from Your Locker:**")
+            relevant_evidence = get_relevant_evidence(st.session_state.current_thought)
+            
+            if relevant_evidence:
+                st.success("Here's evidence that contradicts that negative story:")
+                for evidence in relevant_evidence:
+                    st.markdown(f"""
+                    <div class="relevant-evidence">
+                        <strong>{CATEGORIES[evidence['Category']]} {evidence['Category']}</strong>
+                        <p style='margin: 0.3rem 0; font-size: 14px;'>{evidence['Evidence']}</p>
+                        <small>Impact: {'⭐' * evidence['Impact']} • Date: {evidence['Date'].strftime('%Y-%m-%d')}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
             else:
-                st.warning("Start building your evidence collection to see your amazing qualities!")
+                st.warning("No relevant evidence yet. Start building your evidence locker to see your amazing qualities!")
             
             st.write("**3. 🔄 Consider alternative perspectives:**")
             st.warning("How would someone who loves you unconditionally see this situation?")
@@ -224,7 +275,7 @@ with tab2:
                 if st.button("💾 Save This Reframing"):
                     if reframed:
                         reframing_entry = {
-                            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "date": datetime.now().strftime('%Y-%m-%d %H:%M'),
                             "original": st.session_state.current_thought,
                             "reframed": reframed
                         }
@@ -238,6 +289,16 @@ with tab2:
                     if 'current_thought' in st.session_state:
                         del st.session_state.current_thought
                     st.rerun()
+        
+        # Show reframing history
+        if st.session_state.reframing_history:
+            st.subheader("📖 Your Reframing History")
+            for i, entry in enumerate(reversed(st.session_state.reframing_history[-5:])):  # Show last 5
+                with st.expander(f"Reframing from {entry['date']}"):
+                    st.write("**Original thought:**")
+                    st.info(entry['original'])
+                    st.write("**Balanced perspective:**")
+                    st.success(entry['reframed'])
 
 with tab3:
     st.header("📊 Your Growth Dashboard")
