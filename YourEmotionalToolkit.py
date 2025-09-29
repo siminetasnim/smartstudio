@@ -222,7 +222,7 @@ with tab1:
             category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                   format_func=lambda x: f"{CATEGORIES[x]} {x}")
             evidence = st.text_area("📝 The Evidence", 
-                                  placeholder="",
+                                  placeholder="e.g., 'When I was stressed about work, you listened patiently and helped me break it down into manageable steps...'",
                                   height=100)
             impact = st.slider("💫 Impact Level", 1, 5, 3, 
                              help="How much did this moment matter?")
@@ -390,8 +390,9 @@ with tab3:
     st.header("📊 Your Growth Dashboard")
     
     if not st.session_state.evidence_df.empty:
-        # Convert Date to datetime for proper sorting
-        st.session_state.evidence_df['Date'] = pd.to_datetime(st.session_state.evidence_df['Date'])
+        # Ensure Date is datetime for proper processing
+        evidence_df_copy = st.session_state.evidence_df.copy()
+        evidence_df_copy['Date'] = pd.to_datetime(evidence_df_copy['Date'])
         
         col1, col2 = st.columns(2)
         
@@ -399,7 +400,7 @@ with tab3:
             st.subheader("📈 Your Superpowers Distribution")
             
             # Simple bar chart with Altair
-            category_counts = st.session_state.evidence_df['Category'].value_counts().reset_index()
+            category_counts = evidence_df_copy['Category'].value_counts().reset_index()
             category_counts.columns = ['Category', 'Count']
             
             chart = alt.Chart(category_counts).mark_bar().encode(
@@ -413,38 +414,73 @@ with tab3:
         with col2:
             st.subheader("🚀 Impact Over Time")
             
-            # Monthly impact average
-            monthly_data = st.session_state.evidence_df.copy()
-            monthly_data['Month'] = monthly_data['Date'].dt.to_period('M').astype(str)
-            monthly_avg = monthly_data.groupby('Month')['Impact'].mean().reset_index()
+            # FIXED: Proper monthly grouping and impact calculation
+            monthly_data = evidence_df_copy.copy()
             
-            if len(monthly_avg) > 1:
-                line_chart = alt.Chart(monthly_avg).mark_line(point=True).encode(
+            # Create month-year column for grouping
+            monthly_data['Month_Year'] = monthly_data['Date'].dt.to_period('M').astype(str)
+            
+            # Calculate monthly statistics
+            monthly_stats = monthly_data.groupby('Month_Year').agg({
+                'Impact': 'mean',
+                'Date': 'count'
+            }).reset_index()
+            monthly_stats.columns = ['Month', 'Average_Impact', 'Entry_Count']
+            
+            # Only show chart if we have data across multiple time periods
+            if len(monthly_stats) > 1:
+                # Create the line chart
+                line_chart = alt.Chart(monthly_stats).mark_line(point=True).encode(
+                    x=alt.X('Month:N', title='Month', axis=alt.Axis(labelAngle=-45)),
+                    y=alt.Y('Average_Impact:Q', title='Average Impact', scale=alt.Scale(domain=[1, 5])),
+                    tooltip=['Month', 'Average_Impact', 'Entry_Count']
+                ).properties(
+                    height=300,
+                    title='Your Emotional Growth Journey'
+                )
+                
+                # Add points to the line
+                points = alt.Chart(monthly_stats).mark_circle(
+                    size=100,
+                    opacity=0.7
+                ).encode(
                     x='Month:N',
-                    y='Impact:Q',
-                    color=alt.value('#667eea')
-                ).properties(height=300)
-                st.altair_chart(line_chart, use_container_width=True)
+                    y='Average_Impact:Q',
+                    size=alt.Size('Entry_Count:Q', legend=None, scale=alt.Scale(range=[50, 300])),
+                    color=alt.value('#667eea'),
+                    tooltip=['Month', 'Average_Impact', 'Entry_Count']
+                )
+                
+                combined_chart = line_chart + points
+                st.altair_chart(combined_chart, use_container_width=True)
+                
+                # Show monthly breakdown
+                with st.expander("📅 Monthly Breakdown"):
+                    for _, month_data in monthly_stats.iterrows():
+                        st.write(f"**{month_data['Month']}:** Average Impact {month_data['Average_Impact']:.1f} ⭐ ({month_data['Entry_Count']} entries)")
             else:
-                st.info("Add more entries to see your growth trend!")
+                st.info("📈 Add entries from different months to see your growth trend over time!")
+                # Show current month's average
+                current_avg = monthly_stats.iloc[0]['Average_Impact']
+                st.metric("Current Month Average", f"{current_avg:.1f} ⭐")
         
         # Statistics
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
-            st.metric("Total Entries", len(st.session_state.evidence_df))
+            st.metric("Total Entries", len(evidence_df_copy))
         with col_s2:
-            avg_impact = st.session_state.evidence_df['Impact'].mean()
+            avg_impact = evidence_df_copy['Impact'].mean()
             st.metric("Average Impact", f"{avg_impact:.1f} ⭐")
         with col_s3:
-            top_category = st.session_state.evidence_df['Category'].mode()[0] if not st.session_state.evidence_df.empty else "N/A"
+            top_category = evidence_df_copy['Category'].mode()[0] if not evidence_df_copy.empty else "N/A"
             st.metric("Top Strength", top_category)
         with col_s4:
-            days_span = (st.session_state.evidence_df['Date'].max() - st.session_state.evidence_df['Date'].min()).days if len(st.session_state.evidence_df) > 1 else 0
+            days_span = (evidence_df_copy['Date'].max() - evidence_df_copy['Date'].min()).days + 1 if len(evidence_df_copy) > 1 else 1
             st.metric("Journey Length", f"{days_span} days")
         
         # Recent milestones
         st.subheader("🎯 Recent Growth Milestones")
-        recent_high_impact = st.session_state.evidence_df.nlargest(3, 'Impact')
+        recent_high_impact = evidence_df_copy.nlargest(3, 'Impact')
         for _, milestone in recent_high_impact.iterrows():
             with st.expander(f"{milestone['Category']} (Impact: {'⭐' * milestone['Impact']}) - {milestone['Date'].strftime('%Y-%m-%d')}"):
                 st.write(milestone['Evidence'])
