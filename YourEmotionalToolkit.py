@@ -4,6 +4,9 @@ import json
 from datetime import datetime
 import altair as alt
 import urllib.parse
+import sqlite3
+import os
+from contextlib import contextmanager
 
 # Page config
 st.set_page_config(
@@ -11,6 +14,54 @@ st.set_page_config(
     page_icon="💝",
     layout="wide"
 )
+
+# Database setup
+DB_PATH = "emotional_toolkit.db"
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def init_database():
+    """Initialize the database tables"""
+    with get_db_connection() as conn:
+        # Evidence table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_slug TEXT NOT NULL,
+                date TEXT NOT NULL,
+                category TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                impact INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Reframing history table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS reframing_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_slug TEXT NOT NULL,
+                original_thought TEXT NOT NULL,
+                reframed_thought TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create indexes for better performance
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_evidence_user ON evidence(user_slug)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_reframing_user ON reframing_history(user_slug)')
+        conn.commit()
+
+# Initialize database on app start
+init_database()
 
 # Initialize session state
 if 'evidence_df' not in st.session_state:
@@ -92,84 +143,145 @@ CATEGORY_KEYWORDS = {
     "Patience & Understanding": ['patient', 'patience', 'understand', 'understanding', 'listen', 'calm']
 }
 
-def convert_data_for_storage(df):
-    """Convert DataFrame to JSON-serializable format"""
-    if df.empty:
-        return []
-    
-    # Convert to list of dictionaries and ensure dates are strings
-    records = df.to_dict('records')
-    for record in records:
-        if 'Date' in record and hasattr(record['Date'], 'strftime'):
-            record['Date'] = record['Date'].strftime('%Y-%m-%d')
-    return records
+# Database functions
+def save_evidence(user_slug, date, category, evidence, impact):
+    """Save evidence to database"""
+    with get_db_connection() as conn:
+        conn.execute(
+            'INSERT INTO evidence (user_slug, date, category, evidence, impact) VALUES (?, ?, ?, ?, ?)',
+            (user_slug, date.isoformat(), category, evidence, impact)
+        )
+        conn.commit()
 
-def convert_data_from_storage(records):
-    """Convert stored data back to DataFrame"""
-    if not records:
-        return pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
-    
-    # Convert back to DataFrame and parse dates
-    df = pd.DataFrame(records)
-    if not df.empty and 'Date' in df.columns:
-        df['Date'] = pd.to_datetime(df['Date']).dt.date
-    return df
+def get_user_evidence(user_slug):
+    """Get all evidence for a user"""
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            'SELECT date, category, evidence, impact FROM evidence WHERE user_slug = ? ORDER BY date DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        if not rows:
+            return pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
+        
+        data = []
+        for row in rows:
+            data.append({
+                "Date": datetime.fromisoformat(row['date']).date(),
+                "Category": row['category'],
+                "Evidence": row['evidence'],
+                "Impact": row['impact']
+            })
+        
+        return pd.DataFrame(data)
 
-def save_data():
-    """Save data to browser's session state"""
-    user_slug = st.session_state.get('user_slug', 'default')
-    
-    # Convert data to JSON-serializable format
-    evidence_records = convert_data_for_storage(st.session_state.evidence_df)
-    evidence_json = json.dumps(evidence_records)
-    reframing_json = json.dumps(st.session_state.reframing_history)
-    
-    # Store in session state
-    st.session_state[f'evidence_{user_slug}'] = evidence_json
-    st.session_state[f'reframing_{user_slug}'] = reframing_json
-    
-    # Update URL with just the slug (URL encoded)
-    st.query_params.user = user_slug
+def delete_evidence(user_slug, index):
+    """Delete evidence entry by index"""
+    with get_db_connection() as conn:
+        # Get all evidence for user ordered by date to find the correct ID
+        cursor = conn.execute(
+            'SELECT id FROM evidence WHERE user_slug = ? ORDER BY date DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        if 0 <= index < len(rows):
+            evidence_id = rows[index]['id']
+            conn.execute('DELETE FROM evidence WHERE id = ?', (evidence_id,))
+            conn.commit()
+            return True
+        return False
 
-def load_data():
-    """Load data from session state"""
-    # Get user slug from URL (URL decoded)
-    params = dict(st.query_params)
-    if 'user' in params:
-        user_slug = params['user']
-        if isinstance(user_slug, list):
-            user_slug = user_slug[0]
-        # URL decode the user slug to handle special characters
-        user_slug = urllib.parse.unquote(user_slug)
-    else:
-        user_slug = 'default'
-    
-    st.session_state.user_slug = user_slug
-    
-    # Load from session state
-    evidence_key = f'evidence_{user_slug}'
-    reframing_key = f'reframing_{user_slug}'
-    
-    # Load evidence data
-    if evidence_key in st.session_state:
-        try:
-            evidence_json = st.session_state[evidence_key]
-            evidence_records = json.loads(evidence_json)
-            st.session_state.evidence_df = convert_data_from_storage(evidence_records)
-        except:
-            st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
-    else:
-        st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
-    
-    # Load reframing data
-    if reframing_key in st.session_state:
-        try:
-            reframing_json = st.session_state[reframing_key]
-            st.session_state.reframing_history = json.loads(reframing_json)
-        except:
-            st.session_state.reframing_history = []
-    else:
-        st.session_state.reframing_history = []
+def update_evidence(user_slug, index, date, category, evidence, impact):
+    """Update evidence entry"""
+    with get_db_connection() as conn:
+        # Get all evidence for user ordered by date to find the correct ID
+        cursor = conn.execute(
+            'SELECT id FROM evidence WHERE user_slug = ? ORDER BY date DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        if 0 <= index < len(rows):
+            evidence_id = rows[index]['id']
+            conn.execute(
+                'UPDATE evidence SET date = ?, category = ?, evidence = ?, impact = ? WHERE id = ?',
+                (date.isoformat(), category, evidence, impact, evidence_id)
+            )
+            conn.commit()
+            return True
+        return False
+
+def save_reframing(user_slug, original_thought, reframed_thought):
+    """Save reframing to database"""
+    with get_db_connection() as conn:
+        conn.execute(
+            'INSERT INTO reframing_history (user_slug, original_thought, reframed_thought) VALUES (?, ?, ?)',
+            (user_slug, original_thought, reframed_thought)
+        )
+        conn.commit()
+
+def get_user_reframing_history(user_slug):
+    """Get all reframing history for a user"""
+    with get_db_connection() as conn:
+        cursor = conn.execute(
+            'SELECT original_thought, reframed_thought, created_at FROM reframing_history WHERE user_slug = ? ORDER BY created_at DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        history = []
+        for row in rows:
+            history.append({
+                "original": row['original_thought'],
+                "reframed": row['reframed_thought'],
+                "date": row['created_at']
+            })
+        
+        return history
+
+def delete_reframing(user_slug, index):
+    """Delete reframing entry by index"""
+    with get_db_connection() as conn:
+        # Get all reframing for user ordered by date to find the correct ID
+        cursor = conn.execute(
+            'SELECT id FROM reframing_history WHERE user_slug = ? ORDER BY created_at DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        if 0 <= index < len(rows):
+            reframing_id = rows[index]['id']
+            conn.execute('DELETE FROM reframing_history WHERE id = ?', (reframing_id,))
+            conn.commit()
+            return True
+        return False
+
+def update_reframing(user_slug, index, original_thought, reframed_thought):
+    """Update reframing entry"""
+    with get_db_connection() as conn:
+        # Get all reframing for user ordered by date to find the correct ID
+        cursor = conn.execute(
+            'SELECT id FROM reframing_history WHERE user_slug = ? ORDER BY created_at DESC',
+            (user_slug,)
+        )
+        rows = cursor.fetchall()
+        
+        if 0 <= index < len(rows):
+            reframing_id = rows[index]['id']
+            conn.execute(
+                'UPDATE reframing_history SET original_thought = ?, reframed_thought = ? WHERE id = ?',
+                (original_thought, reframed_thought, reframing_id)
+            )
+            conn.commit()
+            return True
+        return False
+
+def load_user_data(user_slug):
+    """Load all data for a user from database"""
+    st.session_state.evidence_df = get_user_evidence(user_slug)
+    st.session_state.reframing_history = get_user_reframing_history(user_slug)
 
 def get_relevant_evidence(negative_thought):
     """Find evidence from the locker that's relevant to the current negative thought"""
@@ -208,14 +320,10 @@ def edit_reframing_form(index):
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("💾 Save Changes"):
-                st.session_state.reframing_history[index] = {
-                    "date": entry['date'],
-                    "original": edited_original,
-                    "reframed": edited_reframed
-                }
-                save_data()
-                st.session_state.editing_reframing = None
-                st.rerun()
+                if update_reframing(st.session_state.user_slug, index, edited_original, edited_reframed):
+                    load_user_data(st.session_state.user_slug)  # Reload data
+                    st.session_state.editing_reframing = None
+                    st.rerun()
         with col2:
             if st.form_submit_button("❌ Cancel"):
                 st.session_state.editing_reframing = None
@@ -237,13 +345,10 @@ def edit_evidence_form(index):
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("💾 Save Changes"):
-                st.session_state.evidence_df.at[index, 'Date'] = edited_date
-                st.session_state.evidence_df.at[index, 'Category'] = edited_category
-                st.session_state.evidence_df.at[index, 'Evidence'] = edited_evidence
-                st.session_state.evidence_df.at[index, 'Impact'] = edited_impact
-                save_data()
-                st.session_state.editing_evidence = None
-                st.rerun()
+                if update_evidence(st.session_state.user_slug, index, edited_date, edited_category, edited_evidence, edited_impact):
+                    load_user_data(st.session_state.user_slug)  # Reload data
+                    st.session_state.editing_evidence = None
+                    st.rerun()
         with col2:
             if st.form_submit_button("❌ Cancel"):
                 st.session_state.editing_evidence = None
@@ -286,11 +391,6 @@ def user_setup():
 
 # Main app flow
 if user_setup():
-    # Load data for this user
-    if not st.session_state.data_initialized:
-        load_data()
-        st.session_state.data_initialized = True
-
     # Get the current user slug from URL to ensure it's always correct
     params = dict(st.query_params)
     if 'user' in params:
@@ -305,6 +405,11 @@ if user_setup():
     # Update session state with the correct user slug
     st.session_state.user_slug = current_user_slug
 
+    # Load data for this user from database
+    if not st.session_state.data_initialized:
+        load_user_data(st.session_state.user_slug)
+        st.session_state.data_initialized = True
+
     # Show user info in sidebar
     with st.sidebar:
         st.success(f"✨ Welcome, {st.session_state.user_slug}!")
@@ -313,21 +418,11 @@ if user_setup():
         encoded_slug = urllib.parse.quote(st.session_state.user_slug)
         st.code(f"?user={encoded_slug}")
         
-        # Add download backup option
+        # Show data statistics
         if not st.session_state.evidence_df.empty:
-            # Convert data to JSON-serializable format for download
-            evidence_records = convert_data_for_storage(st.session_state.evidence_df)
-            data_to_save = {
-                "evidence": evidence_records,
-                "reframing": st.session_state.reframing_history
-            }
-            
-            st.download_button(
-                label="💾 Download Backup",
-                data=json.dumps(data_to_save, indent=2),
-                file_name=f"emotional_toolkit_{st.session_state.user_slug}.json",
-                mime="application/json"
-            )
+            st.metric("Evidence Entries", len(st.session_state.evidence_df))
+        if st.session_state.reframing_history:
+            st.metric("Reframing Exercises", len(st.session_state.reframing_history))
         
         if st.button("🔄 Switch User"):
             # Clear current user data from URL
@@ -339,7 +434,7 @@ if user_setup():
             st.rerun()
         
         st.markdown("---")
-        st.caption("💝 Your data is saved automatically in this browser")
+        st.caption("💝 Your data is safely stored in a secure database!")
 
     # Main app
     st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_allow_html=True)
@@ -365,17 +460,8 @@ if user_setup():
                 submitted = st.form_submit_button("🔒 Lock It In!")
                 
                 if submitted and evidence:
-                    new_entry = {
-                        "Date": date,
-                        "Category": category,
-                        "Evidence": evidence,
-                        "Impact": impact
-                    }
-                    st.session_state.evidence_df = pd.concat([
-                        st.session_state.evidence_df, 
-                        pd.DataFrame([new_entry])
-                    ], ignore_index=True)
-                    save_data()
+                    save_evidence(st.session_state.user_slug, date, category, evidence, impact)
+                    load_user_data(st.session_state.user_slug)  # Reload updated data
                     st.success("🎉 Evidence stored in your permanent record!")
                     st.balloons()
 
@@ -421,9 +507,9 @@ if user_setup():
                                     st.rerun()
                             with col_d3:
                                 if st.button("🗑️", key=f"delete_{idx}"):
-                                    st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
-                                    save_data()
-                                    st.rerun()
+                                    if delete_evidence(st.session_state.user_slug, idx):
+                                        load_user_data(st.session_state.user_slug)  # Reload data
+                                        st.rerun()
             else:
                 st.info("✨ Your evidence locker is waiting for its first entry...")
 
@@ -479,13 +565,8 @@ if user_setup():
                 with col_b1:
                     if st.button("💾 Save This Reframing"):
                         if reframed:
-                            reframing_entry = {
-                                "date": datetime.now().strftime('%Y-%m-%d %H:%M'),
-                                "original": st.session_state.current_thought,
-                                "reframed": reframed
-                            }
-                            st.session_state.reframing_history.append(reframing_entry)
-                            save_data()
+                            save_reframing(st.session_state.user_slug, st.session_state.current_thought, reframed)
+                            load_user_data(st.session_state.user_slug)  # Reload updated data
                             st.success("Reframing saved to your growth history!")
                             del st.session_state.current_thought
                             st.rerun()
@@ -517,9 +598,9 @@ if user_setup():
                                     st.rerun()
                             with col2:
                                 if st.button("🗑️ Delete", key=f"del_ref_{idx}"):
-                                    st.session_state.reframing_history.pop(idx)
-                                    save_data()
-                                    st.rerun()
+                                    if delete_reframing(st.session_state.user_slug, idx):
+                                        load_user_data(st.session_state.user_slug)  # Reload data
+                                        st.rerun()
 
     with tab3:
         st.header("📊 Your Growth Dashboard")
@@ -628,7 +709,7 @@ if user_setup():
     st.markdown(
         "<div style='text-align: center; color: #ff6b6b; font-style: italic;'>"
         f"Built with 💖 for {st.session_state.user_slug}'s growth journey · "
-        "Your data is saved automatically in this browser!"
+        "Your data is safely stored in a secure database!"
         "</div>",
         unsafe_allow_html=True
     )
