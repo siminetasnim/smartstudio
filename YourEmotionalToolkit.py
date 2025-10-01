@@ -282,7 +282,7 @@ if user_setup():
                 category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
                                       format_func=lambda x: f"{CATEGORIES[x]} {x}")
                 evidence = st.text_area("📝 The Evidence", 
-                                      placeholder="",
+                                      placeholder="e.g., 'When I was stressed about work, you listened patiently and helped me break it down into manageable steps...'",
                                       height=100)
                 impact = st.slider("💫 Impact Level", 1, 5, 3, 
                                  help="How much did this moment matter?")
@@ -359,7 +359,7 @@ if user_setup():
         
         with col1:
             negative_thought = st.text_area("What's the thought you'd like to reframe?",
-                                          placeholder="",
+                                          placeholder="e.g., 'I feel like I'm not loving enough in our relationship...'",
                                           height=150,
                                           key="negative_thought_input")
             
@@ -396,7 +396,7 @@ if user_setup():
                 
                 st.write("**4. 💡 Construct a balanced view:**")
                 reframed = st.text_area("Write your new, more balanced perspective:",
-                                      placeholder="",
+                                      placeholder="e.g., 'I'm learning and growing. One conversation doesn't define my entire character...'",
                                       height=100,
                                       key="reframed_perspective")
                 
