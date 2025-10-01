@@ -3,6 +3,7 @@ import pandas as pd
 import json
 from datetime import datetime
 import altair as alt
+import urllib.parse
 
 # Page config
 st.set_page_config(
@@ -103,14 +104,22 @@ def save_data():
     st.session_state[f'evidence_{user_slug}'] = evidence_json
     st.session_state[f'reframing_{user_slug}'] = reframing_json
     
-    # Also update URL with just the slug
+    # Also update URL with just the slug (URL encoded)
     st.query_params.user = user_slug
 
 def load_data():
     """Load data using the custom user slug"""
-    # Get user slug from URL or create default
+    # Get user slug from URL (URL decoded)
     params = dict(st.query_params)
-    user_slug = params.get('user', ['default'])[0]
+    if 'user' in params:
+        user_slug = params['user']
+        if isinstance(user_slug, list):
+            user_slug = user_slug[0]
+        # URL decode the user slug to handle special characters
+        user_slug = urllib.parse.unquote(user_slug)
+    else:
+        user_slug = 'default'
+    
     st.session_state.user_slug = user_slug
     
     # Load from session state
@@ -233,8 +242,11 @@ def user_setup():
             
             if st.button("🚀 Create My Space", type="primary"):
                 if user_slug and user_slug.strip():
-                    st.session_state.user_slug = user_slug.lower().strip()
-                    st.query_params.user = user_slug.lower().strip()
+                    # Use the exact input without modification
+                    user_slug_clean = user_slug.strip()
+                    st.session_state.user_slug = user_slug_clean
+                    # URL encode the user slug for the URL
+                    st.query_params.user = urllib.parse.quote(user_slug_clean)
                     st.rerun()
                 else:
                     st.error("Please enter a name for your personal URL")
@@ -253,7 +265,14 @@ if user_setup():
 
     # Get the current user slug from URL to ensure it's always correct
     params = dict(st.query_params)
-    current_user_slug = params.get('user', ['default'])[0]
+    if 'user' in params:
+        current_user_slug = params['user']
+        if isinstance(current_user_slug, list):
+            current_user_slug = current_user_slug[0]
+        # URL decode to get the original text
+        current_user_slug = urllib.parse.unquote(current_user_slug)
+    else:
+        current_user_slug = 'default'
     
     # Update session state with the correct user slug
     st.session_state.user_slug = current_user_slug
@@ -262,7 +281,9 @@ if user_setup():
     with st.sidebar:
         st.success(f"✨ Welcome, {st.session_state.user_slug}!")
         st.info(f"**Your permanent URL:**")
-        st.code(f"?user={st.session_state.user_slug}")
+        # Show the actual URL-encoded version for the link
+        encoded_slug = urllib.parse.quote(st.session_state.user_slug)
+        st.code(f"?user={encoded_slug}")
         
         if st.button("🔄 Switch User"):
             # Clear current user data from URL
