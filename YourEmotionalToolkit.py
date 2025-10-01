@@ -24,6 +24,12 @@ if 'editing_reframing' not in st.session_state:
 if 'editing_evidence' not in st.session_state:
     st.session_state.editing_evidence = None
 
+if 'user_slug' not in st.session_state:
+    st.session_state.user_slug = 'default'
+
+if 'data_initialized' not in st.session_state:
+    st.session_state.data_initialized = False
+
 # Custom CSS for cuteness
 st.markdown("""
 <style>
@@ -86,41 +92,44 @@ CATEGORY_KEYWORDS = {
 }
 
 def save_data():
-    """Save data to URL parameters with proper date handling"""
-    # Convert dates to strings for JSON serialization
-    df_to_save = st.session_state.evidence_df.copy()
-    df_to_save['Date'] = df_to_save['Date'].astype(str)
+    """Save data using the custom user slug"""
+    user_slug = st.session_state.get('user_slug', 'default')
     
-    evidence_json = df_to_save.to_json(orient='records')
+    # Convert data to JSON
+    evidence_json = st.session_state.evidence_df.to_json(orient='records')
     reframing_json = json.dumps(st.session_state.reframing_history)
     
-    # Update query parameters
-    st.query_params.evidence_data = evidence_json
-    st.query_params.reframing_data = reframing_json
+    # Store in session state (for this browser)
+    st.session_state[f'evidence_{user_slug}'] = evidence_json
+    st.session_state[f'reframing_{user_slug}'] = reframing_json
+    
+    # Also update URL with just the slug
+    st.query_params.user = user_slug
 
 def load_data():
-    """Load data from URL parameters with proper date handling"""
+    """Load data using the custom user slug"""
+    # Get user slug from URL or create default
     params = dict(st.query_params)
+    user_slug = params.get('user', ['default'])[0]
+    st.session_state.user_slug = user_slug
     
-    if 'evidence_data' in params:
+    # Load from session state
+    evidence_key = f'evidence_{user_slug}'
+    reframing_key = f'reframing_{user_slug}'
+    
+    if evidence_key in st.session_state:
         try:
-            evidence_json = params['evidence_data']
-            if isinstance(evidence_json, list):
-                evidence_json = evidence_json[0]
-            
-            # Load the data and convert dates properly
+            evidence_json = st.session_state[evidence_key]
             loaded_df = pd.read_json(evidence_json, orient='records')
             if not loaded_df.empty:
                 loaded_df['Date'] = pd.to_datetime(loaded_df['Date']).dt.date
                 st.session_state.evidence_df = loaded_df
-        except Exception as e:
+        except:
             st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
     
-    if 'reframing_data' in params:
+    if reframing_key in st.session_state:
         try:
-            reframing_json = params['reframing_data']
-            if isinstance(reframing_json, list):
-                reframing_json = reframing_json[0]
+            reframing_json = st.session_state[reframing_key]
             st.session_state.reframing_history = json.loads(reframing_json)
         except:
             st.session_state.reframing_history = []
@@ -203,297 +212,348 @@ def edit_evidence_form(index):
                 st.session_state.editing_evidence = None
                 st.rerun()
 
-# Load existing data
-load_data()
-
-# Main app
-st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_allow_html=True)
-
-tab1, tab2, tab3 = st.tabs(["📂 Evidence Locker", "🔍 Reframing Engine", "📊 Growth Dashboard"])
-
-with tab1:
-    st.header("📂 Build Your Case for Awesome")
+def user_setup():
+    """Let users set their custom URL slug"""
+    params = dict(st.query_params)
     
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        with st.form("evidence_form", clear_on_submit=True):
-            date = st.date_input("📅 Date", datetime.now())
-            category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
-                                  format_func=lambda x: f"{CATEGORIES[x]} {x}")
-            evidence = st.text_area("📝 The Evidence", 
-                                  placeholder="",
-                                  height=100)
-            impact = st.slider("💫 Impact Level", 1, 5, 3, 
-                             help="How much did this moment matter?")
-            
-            submitted = st.form_submit_button("🔒 Lock It In!")
-            
-            if submitted and evidence:
-                new_entry = {
-                    "Date": date,
-                    "Category": category,
-                    "Evidence": evidence,
-                    "Impact": impact
-                }
-                st.session_state.evidence_df = pd.concat([
-                    st.session_state.evidence_df, 
-                    pd.DataFrame([new_entry])
-                ], ignore_index=True)
-                save_data()
-                st.success("🎉 Evidence stored in your permanent record!")
-                st.balloons()
-
-    with col2:
-        if not st.session_state.evidence_df.empty:
-            st.subheader(f"Your Evidence Collection ({len(st.session_state.evidence_df)} entries)")
-            
-            # Filter options
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                selected_categories = st.multiselect("Filter categories:", 
-                                                   options=list(CATEGORIES.keys()),
-                                                   default=list(CATEGORIES.keys()))
-            with col_f2:
-                min_impact = st.slider("Minimum impact:", 1, 5, 1)
-            
-            filtered_df = st.session_state.evidence_df[
-                (st.session_state.evidence_df['Category'].isin(selected_categories)) &
-                (st.session_state.evidence_df['Impact'] >= min_impact)
-            ]
-            
-            # Display entries with edit/delete buttons
-            for idx, row in filtered_df.sort_values('Date', ascending=False).iterrows():
-                with st.container():
-                    if st.session_state.editing_evidence == idx:
-                        edit_evidence_form(idx)
-                    else:
-                        col_d1, col_d2, col_d3 = st.columns([4, 1, 1])
-                        with col_d1:
-                            st.markdown(f"""
-                            <div class="evidence-entry">
-                                <div style='display: flex; justify-content: space-between; align-items: start;'>
-                                    <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
-                                    <small>Impact: {'⭐' * row['Impact']}</small>
-                                </div>
-                                <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
-                                <small>📅 {row['Date'].strftime('%Y-%m-%d')}</small>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        with col_d2:
-                            if st.button("✏️", key=f"edit_{idx}"):
-                                st.session_state.editing_evidence = idx
-                                st.rerun()
-                        with col_d3:
-                            if st.button("🗑️", key=f"delete_{idx}"):
-                                st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
-                                save_data()
-                                st.rerun()
-        else:
-            st.info("✨ Your evidence locker is waiting for its first entry...")
-
-with tab2:
-    st.header("🔍 Cognitive Reframing Engine")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        negative_thought = st.text_area("What's the thought you'd like to reframe?",
-                                      placeholder="e.g., 'I feel like I'm not loving enough in our relationship...'",
-                                      height=150,
-                                      key="negative_thought_input")
+    if 'user' not in params:
+        st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_allow_html=True)
         
-        if st.button("🧠 Analyze Thought"):
-            if negative_thought:
-                st.session_state.current_thought = negative_thought
-                st.rerun()
-
-    with col2:
-        if 'current_thought' in st.session_state:
-            st.subheader("Let's break this down together:")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.image("https://cdn.pixabay.com/photo/2017/09/23/16/33/pixel-heart-2779422_1280.png", width=150)
+        
+        with col2:
+            st.subheader("🎯 Create Your Personal Space")
+            st.write("Welcome! Create your own permanent URL to save all your progress.")
             
-            st.write("**1. 🎯 Identify the core belief:**")
-            st.info("What's the underlying story you're telling yourself about this situation?")
+            user_slug = st.text_input("Choose your personal URL name:", 
+                                    placeholder="e.g., sidhu, mygrowth, journey",
+                                    help="This will create your permanent URL like: yourapp.streamlit.app/?user=yourname")
             
-            st.write("**2. 📊 Relevant Evidence from Your Locker:**")
-            relevant_evidence = get_relevant_evidence(st.session_state.current_thought)
-            
-            if relevant_evidence:
-                st.success("Here's evidence that contradicts that negative story:")
-                for evidence in relevant_evidence:
-                    st.markdown(f"""
-                    <div class="relevant-evidence">
-                        <strong>{CATEGORIES[evidence['Category']]} {evidence['Category']}</strong>
-                        <p style='margin: 0.3rem 0; font-size: 14px;'>{evidence['Evidence']}</p>
-                        <small>Impact: {'⭐' * evidence['Impact']} • Date: {evidence['Date'].strftime('%Y-%m-%d')}</small>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.warning("No relevant evidence yet. Start building your evidence locker to see your amazing qualities!")
-            
-            st.write("**3. 🔄 Consider alternative perspectives:**")
-            st.warning("How would someone who loves you unconditionally see this situation?")
-            
-            st.write("**4. 💡 Construct a balanced view:**")
-            reframed = st.text_area("Write your new, more balanced perspective:",
-                                  placeholder="e.g., 'I'm learning and growing. One conversation doesn't define my entire character...'",
-                                  height=100,
-                                  key="reframed_perspective")
-            
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                if st.button("💾 Save This Reframing"):
-                    if reframed:
-                        reframing_entry = {
-                            "date": datetime.now().strftime('%Y-%m-%d %H:%M'),
-                            "original": st.session_state.current_thought,
-                            "reframed": reframed
-                        }
-                        st.session_state.reframing_history.append(reframing_entry)
-                        save_data()
-                        st.success("Reframing saved to your growth history!")
-                        del st.session_state.current_thought
-                        st.rerun()
-            with col_b2:
-                if st.button("🔄 Start Over"):
-                    if 'current_thought' in st.session_state:
-                        del st.session_state.current_thought
+            if st.button("🚀 Create My Space", type="primary"):
+                if user_slug and user_slug.strip():
+                    st.session_state.user_slug = user_slug.lower().strip()
+                    st.query_params.user = user_slug.lower().strip()
                     st.rerun()
-        
-        # Show reframing history with edit/delete
-        if st.session_state.reframing_history:
-            st.subheader("📖 Your Reframing History")
-            for i, entry in enumerate(reversed(st.session_state.reframing_history)):
-                idx = len(st.session_state.reframing_history) - 1 - i  # Get original index
-                
-                if st.session_state.editing_reframing == idx:
-                    edit_reframing_form(idx)
                 else:
-                    with st.expander(f"Reframing from {entry['date']}", expanded=i < 3):  # First 3 expanded
-                        st.write("**Original thought:**")
-                        st.info(entry['original'])
-                        st.write("**Balanced perspective:**")
-                        st.success(entry['reframed'])
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("✏️ Edit", key=f"edit_ref_{idx}"):
-                                st.session_state.editing_reframing = idx
-                                st.rerun()
-                        with col2:
-                            if st.button("🗑️ Delete", key=f"del_ref_{idx}"):
-                                st.session_state.reframing_history.pop(idx)
-                                save_data()
-                                st.rerun()
+                    st.error("Please enter a name for your personal URL")
+        
+        st.markdown("---")
+        st.info("💡 **Tip:** Choose a name you'll remember! This will be your permanent space.")
+        return False
+    return True
 
-with tab3:
-    st.header("📊 Your Growth Dashboard")
-    
-    if not st.session_state.evidence_df.empty:
-        # Ensure Date is datetime for proper processing
-        evidence_df_copy = st.session_state.evidence_df.copy()
-        evidence_df_copy['Date'] = pd.to_datetime(evidence_df_copy['Date'])
+# Main app flow
+if user_setup():
+    # Load data for this user
+    if not st.session_state.data_initialized:
+        load_data()
+        st.session_state.data_initialized = True
+
+    # Show user info in sidebar
+    with st.sidebar:
+        st.success(f"✨ Welcome, {st.session_state.user_slug}!")
+        st.info(f"**Your permanent URL:**")
+        st.code(f"?user={st.session_state.user_slug}")
+        
+        if st.button("🔄 Switch User"):
+            # Clear current user data from URL
+            del st.query_params.user
+            st.session_state.data_initialized = False
+            st.rerun()
+        
+        st.markdown("---")
+        st.caption("💝 Your data is saved automatically in this browser")
+
+    # Main app
+    st.markdown('<h1 class="main-header">💝 Your Emotional Toolkit</h1>', unsafe_allow_html=True)
+
+    tab1, tab2, tab3 = st.tabs(["📂 Evidence Locker", "🔍 Reframing Engine", "📊 Growth Dashboard"])
+
+    with tab1:
+        st.header("📂 Build Your Case for Awesome")
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            with st.form("evidence_form", clear_on_submit=True):
+                date = st.date_input("📅 Date", datetime.now())
+                category = st.selectbox("🏷️ Category", options=list(CATEGORIES.keys()), 
+                                      format_func=lambda x: f"{CATEGORIES[x]} {x}")
+                evidence = st.text_area("📝 The Evidence", 
+                                      placeholder="",
+                                      height=100)
+                impact = st.slider("💫 Impact Level", 1, 5, 3, 
+                                 help="How much did this moment matter?")
+                
+                submitted = st.form_submit_button("🔒 Lock It In!")
+                
+                if submitted and evidence:
+                    new_entry = {
+                        "Date": date,
+                        "Category": category,
+                        "Evidence": evidence,
+                        "Impact": impact
+                    }
+                    st.session_state.evidence_df = pd.concat([
+                        st.session_state.evidence_df, 
+                        pd.DataFrame([new_entry])
+                    ], ignore_index=True)
+                    save_data()
+                    st.success("🎉 Evidence stored in your permanent record!")
+                    st.balloons()
+
+        with col2:
+            if not st.session_state.evidence_df.empty:
+                st.subheader(f"Your Evidence Collection ({len(st.session_state.evidence_df)} entries)")
+                
+                # Filter options
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    selected_categories = st.multiselect("Filter categories:", 
+                                                       options=list(CATEGORIES.keys()),
+                                                       default=list(CATEGORIES.keys()))
+                with col_f2:
+                    min_impact = st.slider("Minimum impact:", 1, 5, 1)
+                
+                filtered_df = st.session_state.evidence_df[
+                    (st.session_state.evidence_df['Category'].isin(selected_categories)) &
+                    (st.session_state.evidence_df['Impact'] >= min_impact)
+                ]
+                
+                # Display entries with edit/delete buttons
+                for idx, row in filtered_df.sort_values('Date', ascending=False).iterrows():
+                    with st.container():
+                        if st.session_state.editing_evidence == idx:
+                            edit_evidence_form(idx)
+                        else:
+                            col_d1, col_d2, col_d3 = st.columns([4, 1, 1])
+                            with col_d1:
+                                st.markdown(f"""
+                                <div class="evidence-entry">
+                                    <div style='display: flex; justify-content: space-between; align-items: start;'>
+                                        <h4 style='margin: 0;'>{CATEGORIES[row['Category']]} {row['Category']}</h4>
+                                        <small>Impact: {'⭐' * row['Impact']}</small>
+                                    </div>
+                                    <p style='margin: 0.5rem 0; font-size: 14px;'>{row['Evidence']}</p>
+                                    <small>📅 {row['Date'].strftime('%Y-%m-%d')}</small>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            with col_d2:
+                                if st.button("✏️", key=f"edit_{idx}"):
+                                    st.session_state.editing_evidence = idx
+                                    st.rerun()
+                            with col_d3:
+                                if st.button("🗑️", key=f"delete_{idx}"):
+                                    st.session_state.evidence_df = st.session_state.evidence_df.drop(idx).reset_index(drop=True)
+                                    save_data()
+                                    st.rerun()
+            else:
+                st.info("✨ Your evidence locker is waiting for its first entry...")
+
+    with tab2:
+        st.header("🔍 Cognitive Reframing Engine")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("📈 Your Superpowers Distribution")
+            negative_thought = st.text_area("What's the thought you'd like to reframe?",
+                                          placeholder="",
+                                          height=150,
+                                          key="negative_thought_input")
             
-            # Simple bar chart with Altair
-            category_counts = evidence_df_copy['Category'].value_counts().reset_index()
-            category_counts.columns = ['Category', 'Count']
-            
-            chart = alt.Chart(category_counts).mark_bar().encode(
-                x='Count:Q',
-                y=alt.Y('Category:N', sort='-x'),
-                color=alt.value('#ff6b6b')
-            ).properties(height=300)
-            
-            st.altair_chart(chart, use_container_width=True)
-        
-        with col2:
-            st.subheader("🚀 Impact Over Time")
-            
-            # FIXED: Proper monthly grouping and impact calculation
-            monthly_data = evidence_df_copy.copy()
-            
-            # Create month-year column for grouping
-            monthly_data['Month_Year'] = monthly_data['Date'].dt.to_period('M').astype(str)
-            
-            # Calculate monthly statistics
-            monthly_stats = monthly_data.groupby('Month_Year').agg({
-                'Impact': 'mean',
-                'Date': 'count'
-            }).reset_index()
-            monthly_stats.columns = ['Month', 'Average_Impact', 'Entry_Count']
-            
-            # Only show chart if we have data across multiple time periods
-            if len(monthly_stats) > 1:
-                # Create the line chart
-                line_chart = alt.Chart(monthly_stats).mark_line(point=True).encode(
-                    x=alt.X('Month:N', title='Month', axis=alt.Axis(labelAngle=-45)),
-                    y=alt.Y('Average_Impact:Q', title='Average Impact', scale=alt.Scale(domain=[1, 5])),
-                    tooltip=['Month', 'Average_Impact', 'Entry_Count']
-                ).properties(
-                    height=300,
-                    title='Your Emotional Growth Journey'
-                )
-                
-                # Add points to the line
-                points = alt.Chart(monthly_stats).mark_circle(
-                    size=100,
-                    opacity=0.7
-                ).encode(
-                    x='Month:N',
-                    y='Average_Impact:Q',
-                    size=alt.Size('Entry_Count:Q', legend=None, scale=alt.Scale(range=[50, 300])),
-                    color=alt.value('#667eea'),
-                    tooltip=['Month', 'Average_Impact', 'Entry_Count']
-                )
-                
-                combined_chart = line_chart + points
-                st.altair_chart(combined_chart, use_container_width=True)
-                
-                # Show monthly breakdown
-                with st.expander("📅 Monthly Breakdown"):
-                    for _, month_data in monthly_stats.iterrows():
-                        st.write(f"**{month_data['Month']}:** Average Impact {month_data['Average_Impact']:.1f} ⭐ ({month_data['Entry_Count']} entries)")
-            else:
-                st.info("📈 Add entries from different months to see your growth trend over time!")
-                # Show current month's average
-                current_avg = monthly_stats.iloc[0]['Average_Impact']
-                st.metric("Current Month Average", f"{current_avg:.1f} ⭐")
-        
-        # Statistics
-        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-        with col_s1:
-            st.metric("Total Entries", len(evidence_df_copy))
-        with col_s2:
-            avg_impact = evidence_df_copy['Impact'].mean()
-            st.metric("Average Impact", f"{avg_impact:.1f} ⭐")
-        with col_s3:
-            top_category = evidence_df_copy['Category'].mode()[0] if not evidence_df_copy.empty else "N/A"
-            st.metric("Top Strength", top_category)
-        with col_s4:
-            days_span = (evidence_df_copy['Date'].max() - evidence_df_copy['Date'].min()).days + 1 if len(evidence_df_copy) > 1 else 1
-            st.metric("Journey Length", f"{days_span} days")
-        
-        # Recent milestones
-        st.subheader("🎯 Recent Growth Milestones")
-        recent_high_impact = evidence_df_copy.nlargest(3, 'Impact')
-        for _, milestone in recent_high_impact.iterrows():
-            with st.expander(f"{milestone['Category']} (Impact: {'⭐' * milestone['Impact']}) - {milestone['Date'].strftime('%Y-%m-%d')}"):
-                st.write(milestone['Evidence'])
-    
-    else:
-        st.info("Start building your evidence collection to see your amazing growth dashboard!")
+            if st.button("🧠 Analyze Thought"):
+                if negative_thought:
+                    st.session_state.current_thought = negative_thought
+                    st.rerun()
 
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #ff6b6b; font-style: italic;'>"
-    "Built with 💖 for someone who's growing more wonderful every day · "
-    "Your data is saved in this URL - bookmark it to keep your progress!"
-    "</div>",
-    unsafe_allow_html=True
-)
+        with col2:
+            if 'current_thought' in st.session_state:
+                st.subheader("Let's break this down together:")
+                
+                st.write("**1. 🎯 Identify the core belief:**")
+                st.info("What's the underlying story you're telling yourself about this situation?")
+                
+                st.write("**2. 📊 Relevant Evidence from Your Locker:**")
+                relevant_evidence = get_relevant_evidence(st.session_state.current_thought)
+                
+                if relevant_evidence:
+                    st.success("Here's evidence that contradicts that negative story:")
+                    for evidence in relevant_evidence:
+                        st.markdown(f"""
+                        <div class="relevant-evidence">
+                            <strong>{CATEGORIES[evidence['Category']]} {evidence['Category']}</strong>
+                            <p style='margin: 0.3rem 0; font-size: 14px;'>{evidence['Evidence']}</p>
+                            <small>Impact: {'⭐' * evidence['Impact']} • Date: {evidence['Date'].strftime('%Y-%m-%d')}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.warning("No relevant evidence yet. Start building your evidence locker to see your amazing qualities!")
+                
+                st.write("**3. 🔄 Consider alternative perspectives:**")
+                st.warning("How would someone who loves you unconditionally see this situation?")
+                
+                st.write("**4. 💡 Construct a balanced view:**")
+                reframed = st.text_area("Write your new, more balanced perspective:",
+                                      placeholder="",
+                                      height=100,
+                                      key="reframed_perspective")
+                
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    if st.button("💾 Save This Reframing"):
+                        if reframed:
+                            reframing_entry = {
+                                "date": datetime.now().strftime('%Y-%m-%d %H:%M'),
+                                "original": st.session_state.current_thought,
+                                "reframed": reframed
+                            }
+                            st.session_state.reframing_history.append(reframing_entry)
+                            save_data()
+                            st.success("Reframing saved to your growth history!")
+                            del st.session_state.current_thought
+                            st.rerun()
+                with col_b2:
+                    if st.button("🔄 Start Over"):
+                        if 'current_thought' in st.session_state:
+                            del st.session_state.current_thought
+                        st.rerun()
+            
+            # Show reframing history with edit/delete
+            if st.session_state.reframing_history:
+                st.subheader("📖 Your Reframing History")
+                for i, entry in enumerate(reversed(st.session_state.reframing_history)):
+                    idx = len(st.session_state.reframing_history) - 1 - i  # Get original index
+                    
+                    if st.session_state.editing_reframing == idx:
+                        edit_reframing_form(idx)
+                    else:
+                        with st.expander(f"Reframing from {entry['date']}", expanded=i < 3):  # First 3 expanded
+                            st.write("**Original thought:**")
+                            st.info(entry['original'])
+                            st.write("**Balanced perspective:**")
+                            st.success(entry['reframed'])
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if st.button("✏️ Edit", key=f"edit_ref_{idx}"):
+                                    st.session_state.editing_reframing = idx
+                                    st.rerun()
+                            with col2:
+                                if st.button("🗑️ Delete", key=f"del_ref_{idx}"):
+                                    st.session_state.reframing_history.pop(idx)
+                                    save_data()
+                                    st.rerun()
+
+    with tab3:
+        st.header("📊 Your Growth Dashboard")
+        
+        if not st.session_state.evidence_df.empty:
+            # Ensure Date is datetime for proper processing
+            evidence_df_copy = st.session_state.evidence_df.copy()
+            evidence_df_copy['Date'] = pd.to_datetime(evidence_df_copy['Date'])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📈 Your Superpowers Distribution")
+                
+                # Simple bar chart with Altair
+                category_counts = evidence_df_copy['Category'].value_counts().reset_index()
+                category_counts.columns = ['Category', 'Count']
+                
+                chart = alt.Chart(category_counts).mark_bar().encode(
+                    x='Count:Q',
+                    y=alt.Y('Category:N', sort='-x'),
+                    color=alt.value('#ff6b6b')
+                ).properties(height=300)
+                
+                st.altair_chart(chart, use_container_width=True)
+            
+            with col2:
+                st.subheader("🚀 Impact Over Time")
+                
+                # FIXED: Proper monthly grouping and impact calculation
+                monthly_data = evidence_df_copy.copy()
+                
+                # Create month-year column for grouping
+                monthly_data['Month_Year'] = monthly_data['Date'].dt.to_period('M').astype(str)
+                
+                # Calculate monthly statistics
+                monthly_stats = monthly_data.groupby('Month_Year').agg({
+                    'Impact': 'mean',
+                    'Date': 'count'
+                }).reset_index()
+                monthly_stats.columns = ['Month', 'Average_Impact', 'Entry_Count']
+                
+                # Only show chart if we have data across multiple time periods
+                if len(monthly_stats) > 1:
+                    # Create the line chart
+                    line_chart = alt.Chart(monthly_stats).mark_line(point=True).encode(
+                        x=alt.X('Month:N', title='Month', axis=alt.Axis(labelAngle=-45)),
+                        y=alt.Y('Average_Impact:Q', title='Average Impact', scale=alt.Scale(domain=[1, 5])),
+                        tooltip=['Month', 'Average_Impact', 'Entry_Count']
+                    ).properties(
+                        height=300,
+                        title='Your Emotional Growth Journey'
+                    )
+                    
+                    # Add points to the line
+                    points = alt.Chart(monthly_stats).mark_circle(
+                        size=100,
+                        opacity=0.7
+                    ).encode(
+                        x='Month:N',
+                        y='Average_Impact:Q',
+                        size=alt.Size('Entry_Count:Q', legend=None, scale=alt.Scale(range=[50, 300])),
+                        color=alt.value('#667eea'),
+                        tooltip=['Month', 'Average_Impact', 'Entry_Count']
+                    )
+                    
+                    combined_chart = line_chart + points
+                    st.altair_chart(combined_chart, use_container_width=True)
+                    
+                    # Show monthly breakdown
+                    with st.expander("📅 Monthly Breakdown"):
+                        for _, month_data in monthly_stats.iterrows():
+                            st.write(f"**{month_data['Month']}:** Average Impact {month_data['Average_Impact']:.1f} ⭐ ({month_data['Entry_Count']} entries)")
+                else:
+                    st.info("📈 Add entries from different months to see your growth trend over time!")
+                    # Show current month's average
+                    current_avg = monthly_stats.iloc[0]['Average_Impact']
+                    st.metric("Current Month Average", f"{current_avg:.1f} ⭐")
+            
+            # Statistics
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            with col_s1:
+                st.metric("Total Entries", len(evidence_df_copy))
+            with col_s2:
+                avg_impact = evidence_df_copy['Impact'].mean()
+                st.metric("Average Impact", f"{avg_impact:.1f} ⭐")
+            with col_s3:
+                top_category = evidence_df_copy['Category'].mode()[0] if not evidence_df_copy.empty else "N/A"
+                st.metric("Top Strength", top_category)
+            with col_s4:
+                days_span = (evidence_df_copy['Date'].max() - evidence_df_copy['Date'].min()).days + 1 if len(evidence_df_copy) > 1 else 1
+                st.metric("Journey Length", f"{days_span} days")
+            
+            # Recent milestones
+            st.subheader("🎯 Recent Growth Milestones")
+            recent_high_impact = evidence_df_copy.nlargest(3, 'Impact')
+            for _, milestone in recent_high_impact.iterrows():
+                with st.expander(f"{milestone['Category']} (Impact: {'⭐' * milestone['Impact']}) - {milestone['Date'].strftime('%Y-%m-%d')}"):
+                    st.write(milestone['Evidence'])
+        
+        else:
+            st.info("Start building your evidence collection to see your amazing growth dashboard!")
+
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #ff6b6b; font-style: italic;'>"
+        f"Built with 💖 for {st.session_state.user_slug}'s growth journey · "
+        "Your data is saved automatically in this browser!"
+        "</div>",
+        unsafe_allow_html=True
+    )
