@@ -228,7 +228,7 @@ def user_setup():
             st.write("Welcome! Create your own permanent URL to save all your progress.")
             
             user_slug = st.text_input("Choose your personal URL name:", 
-                                    placeholder="",
+                                    placeholder="e.g., sidhu, mygrowth, journey",
                                     help="This will create your permanent URL like: yourapp.streamlit.app/?user=yourname")
             
             if st.button("🚀 Create My Space", type="primary"):
@@ -251,6 +251,13 @@ if user_setup():
         load_data()
         st.session_state.data_initialized = True
 
+    # Get the current user slug from URL to ensure it's always correct
+    params = dict(st.query_params)
+    current_user_slug = params.get('user', ['default'])[0]
+    
+    # Update session state with the correct user slug
+    st.session_state.user_slug = current_user_slug
+
     # Show user info in sidebar
     with st.sidebar:
         st.success(f"✨ Welcome, {st.session_state.user_slug}!")
@@ -261,6 +268,9 @@ if user_setup():
             # Clear current user data from URL
             del st.query_params.user
             st.session_state.data_initialized = False
+            # Clear the user slug from session state
+            if 'user_slug' in st.session_state:
+                del st.session_state.user_slug
             st.rerun()
         
         st.markdown("---")
