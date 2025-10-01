@@ -228,7 +228,7 @@ def user_setup():
             st.write("Welcome! Create your own permanent URL to save all your progress.")
             
             user_slug = st.text_input("Choose your personal URL name:", 
-                                    placeholder="e.g., sidhu, mygrowth, journey",
+                                    placeholder="",
                                     help="This will create your permanent URL like: yourapp.streamlit.app/?user=yourname")
             
             if st.button("🚀 Create My Space", type="primary"):
