@@ -92,32 +92,47 @@ CATEGORY_KEYWORDS = {
     "Patience & Understanding": ['patient', 'patience', 'understand', 'understanding', 'listen', 'calm']
 }
 
+def convert_data_for_storage(df):
+    """Convert DataFrame to JSON-serializable format"""
+    if df.empty:
+        return []
+    
+    # Convert to list of dictionaries and ensure dates are strings
+    records = df.to_dict('records')
+    for record in records:
+        if 'Date' in record and hasattr(record['Date'], 'strftime'):
+            record['Date'] = record['Date'].strftime('%Y-%m-%d')
+    return records
+
+def convert_data_from_storage(records):
+    """Convert stored data back to DataFrame"""
+    if not records:
+        return pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
+    
+    # Convert back to DataFrame and parse dates
+    df = pd.DataFrame(records)
+    if not df.empty and 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date']).dt.date
+    return df
+
 def save_data():
-    """Save data to browser's local storage AND session state"""
+    """Save data to browser's session state"""
     user_slug = st.session_state.get('user_slug', 'default')
     
-    # Convert data to JSON
-    evidence_json = st.session_state.evidence_df.to_json(orient='records')
+    # Convert data to JSON-serializable format
+    evidence_records = convert_data_for_storage(st.session_state.evidence_df)
+    evidence_json = json.dumps(evidence_records)
     reframing_json = json.dumps(st.session_state.reframing_history)
     
-    # Store in session state (for current session)
+    # Store in session state
     st.session_state[f'evidence_{user_slug}'] = evidence_json
     st.session_state[f'reframing_{user_slug}'] = reframing_json
-    
-    # ALSO store in browser's local storage (persistent)
-    try:
-        # For evidence data
-        st.session_state[f'evidence_{user_slug}_persistent'] = evidence_json
-        # For reframing data
-        st.session_state[f'reframing_{user_slug}_persistent'] = reframing_json
-    except:
-        pass  # If local storage fails, at least we have session state
     
     # Update URL with just the slug (URL encoded)
     st.query_params.user = user_slug
 
 def load_data():
-    """Load data from browser's local storage OR session state"""
+    """Load data from session state"""
     # Get user slug from URL (URL decoded)
     params = dict(st.query_params)
     if 'user' in params:
@@ -131,58 +146,29 @@ def load_data():
     
     st.session_state.user_slug = user_slug
     
-    # Try to load from persistent storage first, then session state
-    evidence_key_persistent = f'evidence_{user_slug}_persistent'
-    reframing_key_persistent = f'reframing_{user_slug}_persistent'
-    evidence_key_session = f'evidence_{user_slug}'
-    reframing_key_session = f'reframing_{user_slug}'
+    # Load from session state
+    evidence_key = f'evidence_{user_slug}'
+    reframing_key = f'reframing_{user_slug}'
     
     # Load evidence data
-    evidence_loaded = False
-    if evidence_key_persistent in st.session_state:
+    if evidence_key in st.session_state:
         try:
-            evidence_json = st.session_state[evidence_key_persistent]
-            loaded_df = pd.read_json(evidence_json, orient='records')
-            if not loaded_df.empty:
-                loaded_df['Date'] = pd.to_datetime(loaded_df['Date']).dt.date
-                st.session_state.evidence_df = loaded_df
-                evidence_loaded = True
+            evidence_json = st.session_state[evidence_key]
+            evidence_records = json.loads(evidence_json)
+            st.session_state.evidence_df = convert_data_from_storage(evidence_records)
         except:
-            pass
-    
-    if not evidence_loaded and evidence_key_session in st.session_state:
-        try:
-            evidence_json = st.session_state[evidence_key_session]
-            loaded_df = pd.read_json(evidence_json, orient='records')
-            if not loaded_df.empty:
-                loaded_df['Date'] = pd.to_datetime(loaded_df['Date']).dt.date
-                st.session_state.evidence_df = loaded_df
-                evidence_loaded = True
-        except:
-            pass
-    
-    if not evidence_loaded:
+            st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
+    else:
         st.session_state.evidence_df = pd.DataFrame(columns=["Date", "Category", "Evidence", "Impact"])
     
     # Load reframing data
-    reframing_loaded = False
-    if reframing_key_persistent in st.session_state:
+    if reframing_key in st.session_state:
         try:
-            reframing_json = st.session_state[reframing_key_persistent]
+            reframing_json = st.session_state[reframing_key]
             st.session_state.reframing_history = json.loads(reframing_json)
-            reframing_loaded = True
         except:
-            pass
-    
-    if not reframing_loaded and reframing_key_session in st.session_state:
-        try:
-            reframing_json = st.session_state[reframing_key_session]
-            st.session_state.reframing_history = json.loads(reframing_json)
-            reframing_loaded = True
-        except:
-            pass
-    
-    if not reframing_loaded:
+            st.session_state.reframing_history = []
+    else:
         st.session_state.reframing_history = []
 
 def get_relevant_evidence(negative_thought):
@@ -329,8 +315,10 @@ if user_setup():
         
         # Add download backup option
         if not st.session_state.evidence_df.empty:
+            # Convert data to JSON-serializable format for download
+            evidence_records = convert_data_for_storage(st.session_state.evidence_df)
             data_to_save = {
-                "evidence": st.session_state.evidence_df.to_dict('records'),
+                "evidence": evidence_records,
                 "reframing": st.session_state.reframing_history
             }
             
